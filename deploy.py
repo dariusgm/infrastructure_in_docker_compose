@@ -65,6 +65,11 @@ def ssh_run(target, command, key_file, stdin=None):
     subprocess.run([*ssh_command(key_file), target, command], input=stdin, check=True)
 
 
+def ssh_sudo(env, key_file, command):
+    """Run a command as root on the host. sudo reads the password from the first line of stdin."""
+    ssh_run(target_of(env), f"sudo -S -p '' {command}", key_file, stdin=(env["HOST_PASSWORD"] + "\n").encode())
+
+
 def write_private_key(directory, env):
     path = Path(directory) / "id_ed25519"
     path.write_bytes(base64.b64decode(env["HOST_PRIVATE_KEY"]))
@@ -149,6 +154,9 @@ def cmd_deploy(env):
     with tempfile.TemporaryDirectory() as tmp:
         key_file = write_private_key(tmp, env)
 
+        print("==> Installing git on the host (needed to clone)")
+        ssh_sudo(env, key_file, "sh -c 'apt-get update && apt-get install -y --no-install-recommends git ca-certificates'")
+
         print("==> Cloning or updating the repository on the host")
         ssh_run(
             target,
@@ -162,12 +170,11 @@ def cmd_deploy(env):
 
         print("==> Installing dependencies, applying firewall, starting the stack")
         # sudo reads the password from the first line of stdin; the script itself is already on the host.
-        ssh_run(
-            target,
-            f"sudo -S -p '' bash {deploy_dir}/server/deploy.sh "
-            f"{shlex.quote(env['ALLOWED_NETWORK'])} {shlex.quote(env['DATA_DIR'])}",
+        ssh_sudo(
+            env,
             key_file,
-            stdin=(env["HOST_PASSWORD"] + "\n").encode(),
+            f"bash {deploy_dir}/server/deploy.sh "
+            f"{shlex.quote(env['ALLOWED_NETWORK'])} {shlex.quote(env['DATA_DIR'])}",
         )
     print("Deployment finished.")
 
