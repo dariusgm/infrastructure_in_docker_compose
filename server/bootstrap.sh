@@ -27,15 +27,52 @@ RUN_UID="$(id -u "$RUN_USER")"
 APPARMOR_SYSCTL=/etc/sysctl.d/60-rootless-docker-userns.conf
 export DEBIAN_FRONTEND=noninteractive
 
-echo "==> Packages"
+echo "==> Base packages"
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends \
-  ca-certificates curl git ufw \
-  docker.io docker-compose-v2 \
+  ca-certificates curl git gnupg ufw \
   uidmap rootlesskit slirp4netns dbus-user-session
 
-echo "==> Docker client next to the rootless helper scripts (the setup tool expects it there)"
-ln -sfn /usr/bin/docker /usr/share/docker.io/contrib/docker
+echo "==> Remove Ubuntu's Docker packages (replaced by Docker's official packages)"
+legacy=()
+for pkg in docker.io docker-compose-v2 containerd runc; do
+  if dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "install ok installed"; then
+    legacy+=("$pkg")
+  fi
+done
+if [ "${#legacy[@]}" -gt 0 ]; then
+  apt-get purge -y -qq "${legacy[@]}"
+fi
+
+echo "==> Docker official apt repository"
+KEYRING=/etc/apt/keyrings/docker.asc
+DOCKER_KEY_FPR=9DC858229FC7DD38854AE2D88D81803C0EBFCD88
+install -d -m 0755 /etc/apt/keyrings
+if [ ! -f "$KEYRING" ]; then
+  curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o "$KEYRING.tmp"
+  if ! gpg --show-keys --with-colons "$KEYRING.tmp" | grep -q "^fpr:::::::::${DOCKER_KEY_FPR}:"; then
+    rm -f "$KEYRING.tmp"
+    echo "Docker signing key fingerprint does not match $DOCKER_KEY_FPR" >&2
+    exit 1
+  fi
+  chmod a+r "$KEYRING.tmp"
+  mv "$KEYRING.tmp" "$KEYRING"
+fi
+# shellcheck source=/dev/null
+. /etc/os-release
+printf '%s\n' \
+  "Types: deb" \
+  "URIs: https://download.docker.com/linux/ubuntu" \
+  "Suites: ${UBUNTU_CODENAME:-$VERSION_CODENAME}" \
+  "Components: stable" \
+  "Architectures: $(dpkg --print-architecture)" \
+  "Signed-By: $KEYRING" \
+  > /etc/apt/sources.list.d/docker.sources
+apt-get update -qq
+
+echo "==> Docker Engine, Compose and rootless extras"
+apt-get install -y -qq --no-install-recommends \
+  docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin docker-ce-rootless-extras
 
 echo "==> Subordinate UID/GID ranges for $RUN_USER"
 grep -q "^${RUN_USER}:" /etc/subuid || usermod --add-subuids 100000-165535 "$RUN_USER"
