@@ -11,9 +11,8 @@ if [ "$(id -u)" -eq 0 ]; then
 fi
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-SETUP_TOOL=/usr/share/docker.io/contrib/dockerd-rootless-setuptool.sh
-# Ubuntu ships dockerd-rootless.sh next to the setup tool, and the tool looks it up on PATH.
-export PATH="/usr/share/docker.io/contrib:${PATH}"
+SETUP_TOOL=/usr/bin/dockerd-rootless-setuptool.sh
+UNIT="$HOME/.config/systemd/user/docker.service"
 
 # Non-login SSH sessions do not set these, and the user systemd manager needs them.
 USER_UID="$(id -u)"
@@ -22,7 +21,14 @@ export DBUS_SESSION_BUS_ADDRESS="unix:path=${XDG_RUNTIME_DIR}/bus"
 export DOCKER_HOST="unix://${XDG_RUNTIME_DIR}/docker.sock"
 
 echo "==> Rootless Docker"
-if ! systemctl --user cat docker.service >/dev/null 2>&1; then
+# A unit left over from an older install points at files that no longer exist, so replace it.
+if [ -f "$UNIT" ] && ! grep -q "^ExecStart=/usr/bin/dockerd-rootless.sh" "$UNIT"; then
+  echo "Replacing rootless unit from an older install"
+  systemctl --user disable --now docker.service || true
+  rm -f "$UNIT"
+  systemctl --user daemon-reload
+fi
+if [ ! -f "$UNIT" ]; then
   "$SETUP_TOOL" install
 fi
 systemctl --user enable --now docker.service
