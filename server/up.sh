@@ -12,6 +12,8 @@ fi
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SETUP_TOOL=/usr/share/docker.io/contrib/dockerd-rootless-setuptool.sh
+# Ubuntu ships dockerd-rootless.sh next to the setup tool, and the tool looks it up on PATH.
+export PATH="/usr/share/docker.io/contrib:${PATH}"
 
 # Non-login SSH sessions do not set these, and the user systemd manager needs them.
 USER_UID="$(id -u)"
