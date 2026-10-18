@@ -1,0 +1,20 @@
+# Stack definition. Every component keeps its state in a bind mount below ${DATA_DIR}
+# (outside this repository), so data survives re-deploys, compose file changes and
+# removed or re-created containers.
+#
+# Published ports are bound to HOST_IP, so they are reachable only on the host's LAN
+# address. Docker bypasses ufw for published ports, so this binding is what keeps them
+# off other interfaces.
+name: infrastructure
+
+services: {}
+
+# Example component:
+#
+#  example:
+#    image: <image>:<tag>
+#    restart: unless-stopped
+#    ports:
+#      - "${HOST_IP}:8080:80"
+#    volumes:
+#      - ${DATA_DIR}/example:/var/lib/example
