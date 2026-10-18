@@ -33,7 +33,8 @@ The deployment is: clone this repository on the server, install the dependencies
 | `.env.example` | Template for the full configuration (committed) |
 | `.env` | Real configuration and secrets (git-ignored, back it up) |
 | `deploy.py` | Local orchestration: keys, upload, remote run |
-| `server/deploy.sh` | Runs on the server as root: packages, firewall, data dir, compose up |
+| `server/bootstrap.sh` | Idempotent host preparation as root: packages, rootless prerequisites, firewall, data dir |
+| `server/up.sh` | Idempotent start as the deploy user: rootless Docker and `docker compose up` |
 | `compose.yaml` | The stack. Add components here. |
 
 ## Data

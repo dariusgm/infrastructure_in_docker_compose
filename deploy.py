@@ -2,7 +2,8 @@
 """Deploy this repository to the target host. Standard library only.
 
   python3 deploy.py keys    create an SSH key pair (if missing) and install it on the host
-  python3 deploy.py deploy  clone/update the repo on the host, upload .env, run server/deploy.sh
+  python3 deploy.py deploy  clone/update the repo on the host, upload .env,
+                            run server/bootstrap.sh (root) and server/up.sh (deploy user)
 
 All configuration lives in .env (git-ignored).
 """
@@ -168,14 +169,20 @@ def cmd_deploy(env):
         print("==> Uploading .env")
         ssh_run(target, f"cat > {deploy_dir}/.env && chmod 600 {deploy_dir}/.env", key_file, stdin=host_env_content())
 
-        print("==> Installing dependencies, applying firewall, starting the stack")
-        # sudo reads the password from the first line of stdin; the script itself is already on the host.
+        relax = env.get("ROOTLESS_RELAX_APPARMOR", "no")
+        if relax not in ("yes", "no"):
+            sys.exit("ROOTLESS_RELAX_APPARMOR must be yes or no")
+
+        print("==> Preparing the host (idempotent, as root)")
         ssh_sudo(
             env,
             key_file,
-            f"bash {deploy_dir}/server/deploy.sh "
-            f"{shlex.quote(env['ALLOWED_NETWORK'])} {shlex.quote(env['DATA_DIR'])}",
+            f"bash {deploy_dir}/server/bootstrap.sh {shlex.quote(env['HOST_USERNAME'])} "
+            f"{shlex.quote(env['ALLOWED_NETWORK'])} {shlex.quote(env['DATA_DIR'])} {relax}",
         )
+
+        print("==> Starting rootless Docker and the stack (as the deploy user)")
+        ssh_run(target, f"bash {deploy_dir}/server/up.sh", key_file)
     print("Deployment finished.")
 
 
