@@ -34,6 +34,9 @@ apt-get install -y -qq --no-install-recommends \
   docker.io docker-compose-v2 \
   uidmap rootlesskit slirp4netns dbus-user-session
 
+echo "==> Docker client next to the rootless helper scripts (the setup tool expects it there)"
+ln -sfn /usr/bin/docker /usr/share/docker.io/contrib/docker
+
 echo "==> Subordinate UID/GID ranges for $RUN_USER"
 grep -q "^${RUN_USER}:" /etc/subuid || usermod --add-subuids 100000-165535 "$RUN_USER"
 grep -q "^${RUN_USER}:" /etc/subgid || usermod --add-subgids 100000-165535 "$RUN_USER"
