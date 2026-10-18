@@ -1,0 +1,7 @@
+# Configuration and secrets: .env holds the complete configuration, never commit it.
+.env
+*.pem
+*.key
+id_ed25519*
+
+__pycache__/
