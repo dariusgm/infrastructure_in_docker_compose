@@ -36,6 +36,7 @@ The deployment is: clone this repository on the server, install the dependencies
 | `server/bootstrap.sh` | Idempotent host preparation as root: packages, rootless prerequisites, firewall, data dir |
 | `server/up.sh` | Idempotent start as the deploy user: rootless Docker and `docker compose up` |
 | `compose.yaml` | The stack. Add components here. |
+| `apt-cache/` | Image for the Ubuntu package cache (apt-cacher-ng and URL proxy). See `apt-cache/README.md`. |
 
 ## Data
 
