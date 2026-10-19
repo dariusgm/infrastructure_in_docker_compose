@@ -99,6 +99,13 @@ else
   fi
 fi
 
+echo "==> Unprivileged ports from 53 (rootless Docker publishes the DNS port of pihole)"
+PORT_SYSCTL=/etc/sysctl.d/60-rootless-dns-port.conf
+if [ "$(sysctl -n net.ipv4.ip_unprivileged_port_start)" -gt 53 ]; then
+  echo 'net.ipv4.ip_unprivileged_port_start = 53' > "$PORT_SYSCTL"
+  sysctl -q -p "$PORT_SYSCTL"
+fi
+
 echo "==> Lingering for $RUN_USER (user services run without a login session)"
 if [ "$(loginctl show-user "$RUN_USER" -p Linger --value 2>/dev/null || true)" != yes ]; then
   loginctl enable-linger "$RUN_USER"
