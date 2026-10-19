@@ -46,10 +46,9 @@ def apt_config(env):
 
 
 def cache_reachable(env):
-    # Health check against the cache on this machine, so the check does not depend on the
-    # configured cache host. apt-cacher-ng serves its statistics page on the same port.
+    # apt-cacher-ng serves its statistics page on the same port.
     try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{env['APT_CACHE_PORT']}/acng-report.html", timeout=5) as response:
+        with urllib.request.urlopen(f"{cache_url(env)}/acng-report.html", timeout=5) as response:
             return response.status == 200
     except OSError:
         return False
