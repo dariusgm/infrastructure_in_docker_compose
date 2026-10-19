@@ -38,6 +38,7 @@ The deployment is: clone this repository on the server, install the dependencies
 | `compose.yaml` | The stack. Add components here. |
 | `apt-cache/` | Image for the Ubuntu package cache (apt-cacher-ng). See `apt-cache/README.md`. |
 | `url-proxy/` | Image for the generic nginx URL proxy and its cache. See `url-proxy/README.md`. |
+| `pihole/` | Notes for Pi-hole, the network-wide DNS server with ad blocking. See `pihole/README.md`. |
 
 ## Data
 

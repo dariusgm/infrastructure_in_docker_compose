@@ -27,6 +27,25 @@ services:
     volumes:
       - ${DATA_DIR}/apt-cache/url-proxy:/var/cache/nginx/url_proxy
 
+  # Network-wide DNS server with ad and tracker blocking (see pihole/README.md).
+  # Clients use HOST_IP as their DNS server. Admin UI: http://${HOST_IP}:8082/admin
+  pihole:
+    image: pihole/pihole:2026.09.0
+    restart: unless-stopped
+    environment:
+      FTLCONF_webserver_api_password: ${PIHOLE_PASSWORD:?Set PIHOLE_PASSWORD in .env}
+      FTLCONF_dns_upstreams: ${PIHOLE_UPSTREAM_DNS:-88.134.230.225;88.134.230.161;1.1.1.1;9.9.9.9}
+      # Answer queries from every network the host is on, not only the container's own subnet.
+      FTLCONF_dns_listeningMode: all
+      TZ: ${PIHOLE_TIMEZONE:-UTC}
+    ports:
+      - "${HOST_IP}:53:53/tcp"
+      - "${HOST_IP}:53:53/udp"
+      - "${HOST_IP}:8082:80"
+    volumes:
+      - ${DATA_DIR}/pihole/etc-pihole:/etc/pihole
+      - ${DATA_DIR}/pihole/etc-dnsmasq.d:/etc/dnsmasq.d
+
 # Example component:
 #
 #  example:
