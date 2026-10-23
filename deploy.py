@@ -19,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 ENV_FILE = ROOT / ".env"
 REQUIRED_KEYS = ["HOST_IP", "HOST_USERNAME", "HOST_PASSWORD"]
-REQUIRED_DEPLOY = REQUIRED_KEYS + ["ALLOWED_NETWORK", "REPO_URL", "DEPLOY_DIR", "DATA_DIR"]
+REQUIRED_DEPLOY = REQUIRED_KEYS + ["ALLOWED_NETWORK", "REPO_URL", "DEPLOY_DIR", "DATA_DIR", "SMB_HOST", "SMB_SHARE", "SMB_USERNAME", "SMB_PASSWORD"]
 # Secrets that stay on the local machine; the host gets a copy of .env without them.
 LOCAL_ONLY = ["HOST_PASSWORD", "HOST_PRIVATE_KEY", "HOST_PUBLIC_KEY"]
 
@@ -181,6 +181,13 @@ def cmd_deploy(env):
             f"{shlex.quote(env['ALLOWED_NETWORK'])} {shlex.quote(env['DATA_DIR'])} {relax}",
         )
 
+        print("==> Mounting the consume share from the NAS (as root)")
+        ssh_sudo(
+            env,
+            key_file,
+            f"bash {deploy_dir}/server/consume-mount.sh {deploy_dir}/.env {shlex.quote(env['HOST_USERNAME'])}",
+        )
+
         print("==> Starting rootless Docker and the stack (as the deploy user)")
         ssh_run(target, f"bash {deploy_dir}/server/up.sh", key_file)
     print("Deployment finished.")
@@ -195,6 +202,10 @@ def main():
     missing = [key for key in required if not env.get(key)]
     if missing:
         sys.exit("Missing values in .env: " + ", ".join(missing))
+    # .env.example uses "<...>" as placeholder text. Refuse to deploy with it still in place.
+    placeholders = [key for key in required if env[key].startswith("<") and env[key].endswith(">")]
+    if placeholders:
+        sys.exit("Replace the placeholder in .env: " + ", ".join(placeholders))
     commands[sys.argv[1]](env)
 
 

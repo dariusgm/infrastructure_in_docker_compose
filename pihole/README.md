@@ -32,3 +32,6 @@ survives rebuilds and re-deploys.
 Most settings are environment variables in `compose.yaml` (`FTLCONF_*`), which are fed from
 `.env`. Change them there and run `python3 deploy.py deploy`. Block lists and other changes made
 in the admin UI are kept in `${DATA_DIR}/pihole` and do not need a redeploy.
+
+The Pi-hole databases (`gravity.db`, `pihole-FTL.db`) are backed up every day, see
+`backup/README.md`.
