@@ -1,0 +1,127 @@
+# Immich: read-only photo archive with CPU-based CLIP search and face recognition.
+#
+# This is a separate Compose project. It does not share a database, a Redis/Valkey instance,
+# a network or a volume with the rest of the stack (compose.yaml). Start it from this directory:
+#   docker compose up -d
+#
+# Version pinned to Immich v3.3.5. Images, the database image and the Valkey image match the
+# official docker-compose.yml of that release tag. Upgrade only by changing IMMICH_VERSION and
+# the database/valkey image lines to the ones of the new release (see README.md).
+name: immich
+
+# Log rotation, same as the rest of the stack.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+networks:
+  # "default" (not declared here) carries the published port of immich-server. The host
+  # firewall (ufw) limits it to the LAN, same as every other published port.
+  # No route to the internet. Database, cache and machine learning live here.
+  backend:
+    internal: true
+
+services:
+  # Web UI and API. The only service with a published port.
+  immich-server:
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:?Set IMMICH_VERSION in .env}
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      immich-db:
+        condition: service_healthy
+      immich-redis:
+        condition: service_healthy
+      immich-machine-learning:
+        condition: service_started
+    networks:
+      - default
+      - backend
+    ports:
+      - "${HOST_IP:?Set HOST_IP in .env}:${IMMICH_PORT:-2283}:2283"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      TZ: ${IMMICH_TIMEZONE:-UTC}
+      DB_HOSTNAME: immich-db
+      DB_USERNAME: immich
+      DB_PASSWORD: ${IMMICH_DB_PASSWORD:?Set IMMICH_DB_PASSWORD in .env}
+      DB_DATABASE_NAME: immich
+      REDIS_HOSTNAME: immich-redis
+      REDIS_PASSWORD: ${IMMICH_REDIS_PASSWORD:?Set IMMICH_REDIS_PASSWORD in .env}
+    volumes:
+      # Writable: thumbnails, transcoded videos, encoded data. Regenerable, see README.md.
+      - ${IMMICH_UPLOAD_DIR:?Set IMMICH_UPLOAD_DIR in .env}:/data
+      # Read-only: the original photos. Add this path as an external library in the web UI.
+      - ${IMMICH_ORIGINALS_HOST_PATH:?Set IMMICH_ORIGINALS_HOST_PATH in .env}:/mnt/originals:ro
+      - /etc/localtime:/etc/localtime:ro
+
+  # Computes CLIP embeddings (smart search) and face recognition. CPU image, no GPU.
+  # Needs outbound access once, to download its models on first use (see README.md).
+  immich-machine-learning:
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:?Set IMMICH_VERSION in .env}
+    restart: unless-stopped
+    logging: *logging
+    networks:
+      - backend
+      - default
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      TZ: ${IMMICH_TIMEZONE:-UTC}
+    volumes:
+      # Model cache. Downloaded once, can be re-downloaded (see README.md).
+      - ${IMMICH_MODEL_CACHE_DIR:?Set IMMICH_MODEL_CACHE_DIR in .env}:/cache
+
+  # PostgreSQL with the VectorChord and pgvectors extensions that Immich needs for search.
+  # This is Immich's own image, not the stock postgres image. It is pinned by digest.
+  immich-db:
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
+    restart: unless-stopped
+    logging: *logging
+    networks:
+      - backend
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_PASSWORD: ${IMMICH_DB_PASSWORD:?Set IMMICH_DB_PASSWORD in .env}
+      POSTGRES_USER: immich
+      POSTGRES_DB: immich
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+      # Set to HDD only if the database directory is not on an SSD.
+      # DB_STORAGE_TYPE: HDD
+    volumes:
+      # Own directory, not shared with any other database. Back it up with pg_dump (README.md).
+      - ${IMMICH_DB_DIR:?Set IMMICH_DB_DIR in .env}:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U immich -d immich"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Valkey (Redis-compatible) cache and job queue for Immich. Password required. No volume:
+  # its content is rebuilt by Immich, so it needs no backup and no persistence.
+  immich-redis:
+    image: docker.io/valkey/valkey:9@sha256:c123e3715db63d06d4ad6964884037aa0d5d4d703939b9929954112889708e1d
+    restart: unless-stopped
+    logging: *logging
+    networks:
+      - backend
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      IMMICH_REDIS_PASSWORD: ${IMMICH_REDIS_PASSWORD:?Set IMMICH_REDIS_PASSWORD in .env}
+      # Read by valkey-cli, so the health check can authenticate.
+      REDISCLI_AUTH: ${IMMICH_REDIS_PASSWORD}
+    command:
+      - sh
+      - -c
+      - exec valkey-server --requirepass "$$IMMICH_REDIS_PASSWORD"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
