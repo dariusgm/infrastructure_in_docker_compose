@@ -22,6 +22,10 @@ x-logging: &logging
 networks:
   backend:
     internal: true
+  # Immich's internal services (database, cache, machine learning). Own network, so they
+  # do not share a network with the Paperless services. See immich/README.md.
+  immich-backend:
+    internal: true
 
 services:
   # Ubuntu package cache for every system on the network. Clients point apt at
@@ -229,6 +233,110 @@ services:
       timeout: 5s
       retries: 3
       start_period: 5m
+
+  # --- Immich: photo archive with CPU-based smart search and face recognition ---
+  # Originals are mounted read-only. See immich/README.md for the volumes, the backups and
+  # the manual steps after the first start.
+
+  # Web UI and API. The only Immich service with a published port.
+  immich-server:
+    image: ghcr.io/immich-app/immich-server:v3.3.5
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      immich-db:
+        condition: service_healthy
+      immich-redis:
+        condition: service_healthy
+      immich-machine-learning:
+        condition: service_started
+    # "default" keeps the published port reachable; "immich-backend" connects to the internal services.
+    networks:
+      - default
+      - immich-backend
+    ports:
+      - "${HOST_IP}:2283:2283"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      TZ: ${IMMICH_TIMEZONE:-UTC}
+      DB_HOSTNAME: immich-db
+      DB_USERNAME: immich
+      DB_PASSWORD: ${IMMICH_DB_PASSWORD:?Set IMMICH_DB_PASSWORD in .env}
+      DB_DATABASE_NAME: immich
+      REDIS_HOSTNAME: immich-redis
+      REDIS_PASSWORD: ${IMMICH_REDIS_PASSWORD:?Set IMMICH_REDIS_PASSWORD in .env}
+    volumes:
+      # Writable: thumbnails, transcoded videos, Immich's own database dumps and files uploaded
+      # through the app. Only the thumbnails are regenerable. See immich/README.md.
+      - ${DATA_DIR}/immich/upload:/data
+      # Read-only: the original photos. Added as an external library in the web UI.
+      - ${IMMICH_ORIGINALS_DIR:?Set IMMICH_ORIGINALS_DIR in .env}:/mnt/originals:ro
+      - /etc/localtime:/etc/localtime:ro
+
+  # CLIP embeddings (smart search) and face recognition. CPU image. Needs outbound access once,
+  # to download its models (see immich/README.md).
+  immich-machine-learning:
+    image: ghcr.io/immich-app/immich-machine-learning:v3.3.5
+    restart: unless-stopped
+    logging: *logging
+    networks:
+      - immich-backend
+      - default
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      TZ: ${IMMICH_TIMEZONE:-UTC}
+    volumes:
+      - ${DATA_DIR}/immich/model-cache:/cache
+
+  # PostgreSQL with the VectorChord and pgvectors extensions Immich needs. Immich's own image,
+  # pinned by digest. Not the stock postgres image, and not the Paperless database.
+  immich-db:
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
+    restart: unless-stopped
+    logging: *logging
+    networks:
+      - immich-backend
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      POSTGRES_PASSWORD: ${IMMICH_DB_PASSWORD:?Set IMMICH_DB_PASSWORD in .env}
+      POSTGRES_USER: immich
+      POSTGRES_DB: immich
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    volumes:
+      - ${DATA_DIR}/immich/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U immich -d immich"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Valkey (Redis-compatible) cache and job queue for Immich. Password required. No volume:
+  # Immich rebuilds its content, so it needs neither persistence nor backup.
+  immich-redis:
+    image: docker.io/valkey/valkey:9@sha256:418652cfb58ef879d4978c33553735d7147016032d5aefaa14c828e611eb9dfd
+    restart: unless-stopped
+    logging: *logging
+    networks:
+      - immich-backend
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      IMMICH_REDIS_PASSWORD: ${IMMICH_REDIS_PASSWORD:?Set IMMICH_REDIS_PASSWORD in .env}
+      # Read by valkey-cli, so the health check can authenticate.
+      REDISCLI_AUTH: ${IMMICH_REDIS_PASSWORD}
+    command:
+      - sh
+      - -c
+      - exec valkey-server --requirepass "$$IMMICH_REDIS_PASSWORD"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 # Example component:
 #
