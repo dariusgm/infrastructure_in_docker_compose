@@ -55,7 +55,7 @@ internet.
 
 | Host path | Container path | Access | Content | Backup needed |
 | --- | --- | --- | --- | --- |
-| `IMMICH_ORIGINALS_DIR` | `/mnt/originals` | **read-only** | The original photos | **Yes, separately, not by this stack.** A read-only mount does not protect against a failing disk. |
+| `/mnt/immich-originals` (host, SMB from the NAS) | `/mnt/originals` | **read-only** | The original photos | **Yes, separately, not by this stack.** A read-only mount does not protect against a failing disk. |
 | `${DATA_DIR}/immich/upload` | `/data` | read-write | Thumbnails, transcoded videos, Immich's own database dumps (`backups/`), files uploaded through the app (`upload/`) | See below |
 | `${DATA_DIR}/immich/postgres` | `/var/lib/postgresql/data` | read-write | Database: albums, faces, search index, file paths | **Yes.** Daily `pg_dump` to a second, independent target. |
 | `${DATA_DIR}/immich/model-cache` | `/cache` | read-write | CLIP and face models | No. Downloaded again on demand. |
@@ -110,10 +110,15 @@ stopped stack with the same Immich version and an empty `${DATA_DIR}/immich/post
 
 1. Add the Immich values to `.env` (copy them from `.env.example`, section "Photo archive"):
    `IMMICH_DB_PASSWORD` and `IMMICH_REDIS_PASSWORD` (generate each with `openssl rand -hex 24`),
-   `IMMICH_ORIGINALS_DIR` (the host folder with the year folders). `IMMICH_TIMEZONE` is optional.
+   `IMMICH_SMB_HOST`, `IMMICH_SMB_SHARE`, `IMMICH_SMB_SUBPATH`, `IMMICH_SMB_USERNAME`, `IMMICH_SMB_PASSWORD`
+   (the read-only NAS user and the folder with the year folders). `IMMICH_TIMEZONE` is optional.
+   The originals are mounted by `server/immich-originals-mount.sh`, which `deploy.py` runs. It mounts
+   the share read-only at `/mnt/immich-originals`, with its own credentials file
+   (`/etc/infrastructure/immich-smb.cred`, root only), separate from the Paperless share.
    **The stack does not start without the first three values**, and that includes the existing
    services. Set them before the next deploy.
-2. Check the folder for the originals exists on the host.
+2. Check the originals are mounted on the host: `findmnt /mnt/immich-originals` must show `cifs` with `ro`.
+   Without the mount, the container sees an empty folder.
 3. Deploy: `python3 deploy.py deploy`. The data folders below `DATA_DIR` are created by Docker.
 4. Open `http://<HOST_IP>:2283`.
 
@@ -162,5 +167,8 @@ After changing `.env` or `compose.yaml`, run `python3 deploy.py deploy`. A plain
    the models elsewhere, copy them into the model cache, then remove `default` from that service.
 6. **Health checks** for `immich-server` and `immich-machine-learning` are not set. The image's HTTP
    endpoint was not verified. Add them after checking against the running image.
-7. **Not tested here:** this machine had no Docker, so `docker compose config`, the start and the
+7. **NAS offline:** if the share is not mounted, the container sees an empty folder. A library scan
+   could then mark the assets as missing. Check in the Immich v3.3.5 docs what a scan does with
+   missing files before the stack runs unattended. Consider a scan only when the mount is verified.
+8. **Not tested here:** this machine had no Docker, so `docker compose config`, the start and the
    restore test have **not** been run.

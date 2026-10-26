@@ -19,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 ENV_FILE = ROOT / ".env"
 REQUIRED_KEYS = ["HOST_IP", "HOST_USERNAME", "HOST_PASSWORD"]
-REQUIRED_DEPLOY = REQUIRED_KEYS + ["ALLOWED_NETWORK", "REPO_URL", "DEPLOY_DIR", "DATA_DIR", "SMB_HOST", "SMB_SHARE", "SMB_USERNAME", "SMB_PASSWORD"]
+REQUIRED_DEPLOY = REQUIRED_KEYS + ["ALLOWED_NETWORK", "REPO_URL", "DEPLOY_DIR", "DATA_DIR", "SMB_HOST", "SMB_SHARE", "SMB_USERNAME", "SMB_PASSWORD", "IMMICH_SMB_HOST", "IMMICH_SMB_SHARE", "IMMICH_SMB_USERNAME", "IMMICH_SMB_PASSWORD"]
 # Secrets that stay on the local machine; the host gets a copy of .env without them.
 LOCAL_ONLY = ["HOST_PASSWORD", "HOST_PRIVATE_KEY", "HOST_PUBLIC_KEY"]
 
@@ -186,6 +186,13 @@ def cmd_deploy(env):
             env,
             key_file,
             f"bash {deploy_dir}/server/consume-mount.sh {deploy_dir}/.env {shlex.quote(env['HOST_USERNAME'])}",
+        )
+
+        print("==> Mounting the Immich originals from the NAS (as root, read-only)")
+        ssh_sudo(
+            env,
+            key_file,
+            f"bash {deploy_dir}/server/immich-originals-mount.sh {deploy_dir}/.env {shlex.quote(env['HOST_USERNAME'])}",
         )
 
         print("==> Starting rootless Docker and the stack (as the deploy user)")
