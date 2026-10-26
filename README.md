@@ -41,7 +41,7 @@ The deployment is: clone this repository on the server, install the dependencies
 | `url-proxy/` | Image for the generic nginx URL proxy and its cache. See `url-proxy/README.md`. |
 | `pihole/` | Notes for Pi-hole, the network-wide DNS server with ad blocking. See `pihole/README.md`. |
 | `paperless/` | Notes for Paperless-ngx, the document management system, and its services. See `paperless/README.md`. |
-| `immich/` | Separate Compose project: Immich photo archive (read-only originals), its own database and cache. See `immich/README.md`. |
+| `immich/` | Notes for Immich, the photo archive (read-only originals, smart search, face recognition). The services are in `compose.yaml`. See `immich/README.md`. |
 | `backup/` | Image and notes for the daily backup of the databases and files. See `backup/README.md`. |
 | `server/consume-mount.sh` | Mounts the consume share of the NAS on the host at `/mnt/paperless-consume`. Run by `deploy.py`. |
 

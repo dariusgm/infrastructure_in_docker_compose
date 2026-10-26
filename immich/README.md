@@ -1,110 +1,99 @@
 # immich
 
-Immich, the photo library, used here as a **read-only archive** of the year folders on the NAS.
-Search by content uses CLIP (CPU, no GPU), faces are recognised, and the original files are
-never modified: the originals are mounted read-only.
+Immich, the photo library, used as a **read-only archive** of the year folders on the NAS. Search by
+content uses CLIP (CPU, no GPU), faces are recognised, and the original files are never modified:
+the originals are mounted read-only.
 
-This is a separate Compose project in `immich/`. It has its own database, its own Valkey
-cache, its own network and its own volumes. It does not touch the root `compose.yaml` stack,
-its database, its volumes or its backup job.
+The services are part of the root `compose.yaml` (`immich-server`, `immich-machine-learning`,
+`immich-db`, `immich-redis`). Configuration is in the root `.env` (see `.env.example`, section
+"Photo archive"). Start with the rest of the stack: `python3 deploy.py deploy`.
 
-## Version
+## Version and dependencies
 
-Pinned to **Immich v3.3.5** (`IMMICH_VERSION` in `immich/.env`).
+Pinned to **Immich v3.3.5**, the latest stable release (21 Oct 2026):
+https://github.com/immich-app/immich/releases/tag/v3.3.5
 
-- Release: https://github.com/immich-app/immich/releases/tag/v3.3.5
-- Compose file of that tag, which the images below are taken from:
-  https://github.com/immich-app/immich/blob/v3.3.5/docker/docker-compose.yml
+The images are the ones of that release's compose file, including digests:
+https://github.com/immich-app/immich/blob/v3.3.5/docker/docker-compose.yml
 
-The database image `ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0` (with the
-VectorChord and pgvectors extensions) and the Valkey image `valkey/valkey:9` are taken from that
-file, including their digests. Immich needs the vector extension for search, so the stock
-`postgres` image cannot be used.
+| Image | Version | Why this one |
+| --- | --- | --- |
+| `immich-server`, `immich-machine-learning` | `v3.3.5` | Latest stable release |
+| `immich-db` | `ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0` | Immich's own image with the vector extensions. Release v3.3.5 ships it. |
+| `immich-redis` | `valkey/valkey:9` (digest of v3.3.5) | Valkey 9 as used by the release |
 
-To upgrade, read the release notes, back up the database (section "Database backup"), then set
-`IMMICH_VERSION` and, if the release file changed them, the `immich-db` and `immich-redis` image
-lines in `docker-compose.yml`, and run `docker compose up -d` again.
+Not taken: VectorChord 1.1.1 is the newest VectorChord, but v3.3.5 does not ship with it. Newer
+versions of the database image or Valkey would be an untested combination with Immich. The
+`main` branch of Immich has a newer Valkey digest, which is not in a release yet.
+
+**Open:** PostgreSQL 14 (in the image above) reaches end of life in November 2026. Immich v3.3.5
+does not offer a newer PostgreSQL image, so the database stays on 14 for now. Moving to a newer major
+version needs a dump and restore and a release of Immich that supports it. Check for that before
+the stack goes to the server, and again after each Immich release.
 
 ## Existing PostgreSQL instance (not used here)
 
-The root stack has a PostgreSQL instance for Paperless (`paperless-db`, image
-`postgres:18.6-trixie`, see `compose.yaml`). Immich does **not** use it. This stack has its own
-database with the vector extension. The existing instance was not checked for the vector
-extension, and it was not changed. If that is needed later, check it read-only on the server:
-`SELECT name FROM pg_available_extensions WHERE name LIKE 'vector%';`
+Paperless uses its own PostgreSQL (`paperless-db`, image `postgres:18.6-trixie`). Immich does not
+use it. The vector extension is in Immich's own database image. Whether the Paperless database has
+the extension was not checked, and it was not changed.
 
-## Containers
+## Containers and networks
 
-| Service | Image | Purpose | Published |
-| --- | --- | --- | --- |
-| `immich-server` | `immich-server:v3.3.5` | Web UI, API, reads the originals, writes the thumbnails | `HOST_IP:2283` |
-| `immich-machine-learning` | `immich-machine-learning:v3.3.5` (CPU) | CLIP embeddings and face recognition | no |
-| `immich-db` | `ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0` | Database | no |
-| `immich-redis` | `valkey/valkey:9` | Cache and job queue, no volume | no |
+| Service | Published | Networks |
+| --- | --- | --- |
+| `immich-server` | `${HOST_IP}:2283` | `default` (published port) and `immich-backend` |
+| `immich-machine-learning` | no | `immich-backend` and `default` (internet, to download its models) |
+| `immich-db` | no | `immich-backend` only |
+| `immich-redis` | no | `immich-backend` only |
 
-## Networks
-
-- `default`: only `immich-server` joins it. Its port is published on `HOST_IP`. The host firewall
-  (ufw) limits access to the LAN, as for every other published port.
-- `backend`: `internal: true`, no route to the internet. `immich-server`, `immich-db`,
-  `immich-redis` and `immich-machine-learning` join it.
-
-Exception: `immich-machine-learning` also joins `default`, because it downloads its CLIP and
-face models from the internet on first use. After the models are downloaded, it can be moved to
-`backend` only, by removing `default` from its `networks:` list. Then the models must already be in
-the model cache.
+`immich-backend` is `internal: true`, so the database and the cache have no route to the internet.
+`immich-machine-learning` joins `default` only to download its CLIP and face models on first use.
+After that, remove `default` from its `networks:` list in `compose.yaml`, which keeps it off the
+internet.
 
 ## Volumes and backups
 
-All host paths come from `immich/.env`. They must exist before the first start.
-
-| Variable | Container path | Access | Content | Backup needed |
+| Host path | Container path | Access | Content | Backup needed |
 | --- | --- | --- | --- | --- |
-| `IMMICH_ORIGINALS_HOST_PATH` | `/mnt/originals` | **read-only** | The year folders (originals) | **Yes, separately, not by this stack.** A read-only mount does not protect against a failing disk. Back up the NAS folder with its own job. |
-| `IMMICH_UPLOAD_DIR` | `/data` | read-write | Thumbnails, transcoded videos, Immich's own database dumps (`backups/`), and **files uploaded through the app** (`upload/`) | See below |
-| `IMMICH_DB_DIR` | `/var/lib/postgresql/data` | read-write | PostgreSQL database: albums, faces, search index, file paths | **Yes.** Daily `pg_dump` to a second, independent target, see "Database backup". |
-| `IMMICH_MODEL_CACHE_DIR` | `/cache` | read-write | CLIP and face models | No. Downloaded again on demand. |
-| Valkey | no volume | none | Cache and job queue | No. Rebuilt by Immich. |
+| `IMMICH_ORIGINALS_DIR` | `/mnt/originals` | **read-only** | The original photos | **Yes, separately, not by this stack.** A read-only mount does not protect against a failing disk. |
+| `${DATA_DIR}/immich/upload` | `/data` | read-write | Thumbnails, transcoded videos, Immich's own database dumps (`backups/`), files uploaded through the app (`upload/`) | See below |
+| `${DATA_DIR}/immich/postgres` | `/var/lib/postgresql/data` | read-write | Database: albums, faces, search index, file paths | **Yes.** Daily `pg_dump` to a second, independent target. |
+| `${DATA_DIR}/immich/model-cache` | `/cache` | read-write | CLIP and face models | No. Downloaded again on demand. |
+| Valkey | none | none | Cache and job queue | No. Rebuilt by Immich. |
 
-### Decision: the upload directory is not backed up by default
+The root `backup` container does **not** cover Immich. It belongs to the Paperless and Pi-hole
+stack and was not changed. Immich's backup is a separate decision (see "Open decisions").
 
-Thumbnails, transcoded videos and Immich's built-in database dumps in `${IMMICH_UPLOAD_DIR}` are
-regenerable. They can be rebuilt from the originals and the database.
+### The upload directory is not regenerable in full
 
-**Exception:** `${IMMICH_UPLOAD_DIR}/upload/` holds every file that someone uploads through the app
-or the mobile client. Those files are not regenerable. This setup is meant as a read-only archive,
-so uploads should not happen. If someone uploads through the app anyway, those files need a backup
-(the directory `upload/` only), or they must be moved to the originals folder on the NAS.
+Thumbnails, transcoded videos and Immich's own database dumps can be rebuilt from the originals and
+the database. But `${DATA_DIR}/immich/upload/upload/` holds every file uploaded through the app or
+the mobile client, and those cannot be rebuilt. This setup is a read-only archive, so uploads should
+not happen. If uploads are allowed, back up `upload/` as well.
 
-Immich also writes its own database dumps to `${IMMICH_UPLOAD_DIR}/backups/`, if its built-in backup
-is enabled (check the settings and the docs of v3.3.5 for schedule and retention). They live on the
-same disk, so they are not a substitute for the off-site copy below.
+Immich's own database dumps in `backups/` (if its built-in backup is enabled, check the settings and
+the docs of v3.3.5) are on the same disk. They are not a substitute for the off-site copy.
 
 ## Database backup
 
-The database is the only state that is not regenerable and not in the originals. Immich's own
-dumps (see above) are on the same disk. The off-site copy below is the real backup.
-
-**Method:** `pg_dump` in custom format, taken from the running container. Do not copy the files of
-`${IMMICH_DB_DIR}` while the database runs.
+The database is the only state that is neither regenerable nor in the originals. Immich's own dumps
+are on the same disk, so the off-site copy is the real backup. Do not copy the files of
+`${DATA_DIR}/immich/postgres` while the database runs.
 
 ```bash
-cd ~/<DEPLOY_DIR>/immich
+cd ~/<DEPLOY_DIR>
 STAMP=$(date -u +%Y%m%dT%H%M%SZ)
 docker compose exec -T immich-db pg_dump -U immich -d immich -Fc > "<backup-target>/immich-$STAMP.dump"
 docker compose exec -T immich-db pg_restore --list < "<backup-target>/immich-$STAMP.dump" > /dev/null && echo "dump OK"
 ```
 
-- **Second, independent target:** a second disk, an external drive or another machine, not the
-  server's data disk. This is the target that protects against disk loss. It is **not yet set up**,
-  see "Open decisions".
-- **Frequency:** daily, in the same run as the originals backup.
-- **Retention:** 14 daily dumps on the target (about two weeks). Older dumps are deleted only after
-  a successful new dump.
-- **Consistency:** a dump is a consistent snapshot of one point in time. Keep it together with the
-  originals copy of the same day, so the photos and their database entries belong together.
+- **Target:** a second disk, an external drive or another machine, not the server's data disk.
+  **Not set up yet**, see "Open decisions".
+- **Frequency:** daily, in the same run as the originals copy.
+- **Retention:** 14 daily dumps (about two weeks). Delete older dumps only after a new one succeeded.
+- **Consistency:** keep each dump together with the originals copy of the same day.
 
-**Restore test (do it once after the first backup, then every few months):**
+**Restore test (once after the first backup, then every few months):**
 
 ```bash
 # Restore into a separate, empty database, not the live one.
@@ -114,85 +103,64 @@ docker compose exec -T immich-db psql -U immich -d restore_test -c "SELECT count
 docker compose exec -T immich-db dropdb -U immich restore_test
 ```
 
-The count must be plausible (the number of photos Immich shows in the UI). For a full disaster
-recovery, the database restore must be done in a stopped stack, with the same Immich version, into
-an empty `${IMMICH_DB_DIR}`.
+The count must match the number of photos Immich shows in the UI. For a full recovery, restore into a
+stopped stack with the same Immich version and an empty `${DATA_DIR}/immich/postgres`.
 
-## Start
+## Setup
 
-1. Create the host folders, for example:
-   ```bash
-   sudo mkdir -p /srv/infrastructure/data/immich/{upload,database,model-cache}
-   ```
-   Use paths below `DATA_DIR`, like the other services. The database folder must be writable by the
-   container user. Let Docker create it, or set the owner as the image expects.
-2. Create the configuration:
-   ```bash
-   cp .env.example .env
-   ```
-   Fill in every value: `HOST_IP`, the two generated passwords (`openssl rand -hex 24`), the host
-   paths. Remove the placeholders `<...>`.
-3. Check the configuration **before** starting:
-   ```bash
-   docker compose config --quiet && echo "config OK"
-   ```
-4. Start:
-   ```bash
-   docker compose up -d
-   docker compose ps
-   ```
-5. Open `http://<HOST_IP>:2283`.
+1. Add the Immich values to `.env` (copy them from `.env.example`, section "Photo archive"):
+   `IMMICH_DB_PASSWORD` and `IMMICH_REDIS_PASSWORD` (generate each with `openssl rand -hex 24`),
+   `IMMICH_ORIGINALS_DIR` (the host folder with the year folders). `IMMICH_TIMEZONE` is optional.
+   **The stack does not start without the first three values**, and that includes the existing
+   services. Set them before the next deploy.
+2. Check the folder for the originals exists on the host.
+3. Deploy: `python3 deploy.py deploy`. The data folders below `DATA_DIR` are created by Docker.
+4. Open `http://<HOST_IP>:2283`.
 
 ## Manual steps after the first start
 
-1. **Admin account:** the first user who signs up becomes the administrator. Create it in the UI.
-   Keep the password in a password manager.
+1. **Admin account:** the first user who signs up becomes the administrator. Keep its password in a
+   password manager.
 2. **External library:** Administration > External Libraries > Create library. Owner: the admin.
-   Import path: `/mnt/originals`. Enable the scan. Immich reads the year folders and never writes
-   there.
-3. **Read-only check:** Immich may report that it cannot write a marker file into the import
-   path. Create the marker files on the NAS side, the mount is read-only inside the container.
-   Check the Immich documentation for the version in use before doing this.
-4. **Models:** the first scan downloads the CLIP and face models into `${IMMICH_MODEL_CACHE_DIR}`.
-   This needs internet access (see "Networks"). Check that smart search returns results after the
-   first scan finishes.
-5. **Data safety:** turn off the phone upload in the mobile app for this server, if it is used
-   (see the decision above).
+   Import path: `/mnt/originals`. Start the scan. Immich only reads there.
+3. **Read-only check:** Immich may report that it cannot write a marker file into the import path.
+   Check the Immich documentation for v3.3.5 for how to handle this. Any marker file is created on the
+   NAS side, because the mount is read-only inside the container.
+4. **Models:** the first scan downloads the CLIP and face models. Check that smart search returns
+   results once the scan has finished.
+5. **Uploads:** if the mobile app is used with this server, decide whether uploads are allowed (see
+   "The upload directory is not regenerable in full").
 
 ## Operations
 
 ```bash
-docker compose ps                       # status
-docker compose logs -f immich-server    # web UI and import jobs
-docker compose logs -f immich-machine-learning   # model download and search indexing
+docker compose ps                                  # status of all services
+docker compose logs -f immich-server               # web UI and import jobs
+docker compose logs -f immich-machine-learning     # model download and indexing
 ```
 
-After changing `.env` or `docker-compose.yml`, run `docker compose up -d`. A plain `docker compose restart`
-does not apply changes to the environment or the compose file.
+After changing `.env` or `compose.yaml`, run `python3 deploy.py deploy`. A plain
+`docker compose restart` does not apply changes to the environment or the compose file.
 
 ## Security
 
 - The web UI is plain HTTP on the LAN, like Paperless. Do not forward port 2283 on the router.
 - Only `immich-server` publishes a port. The database and the cache are not reachable from the LAN.
-- The cache has a password. The database has a password. Both are generated, not reused.
-- Photos are personal data. Every backup copy is as sensitive as the photos. Encrypt the off-site
-  copy and limit who can read it.
+- The database and the cache have generated passwords, not reused ones.
+- Photos are personal data. Every backup copy is as sensitive as the photos. Encrypt the off-site copy
+  and limit who can read it.
 
 ## Open decisions
 
-These were not decided in this change. The stack works without them:
-
-1. **Second backup target** for the database dumps and the originals: which medium (second disk,
-   external drive, off-site location) and who runs the copy.
-2. **Backup job for the database**: not added to the root `backup` container, because that
-   container belongs to the Paperless and Pi-hole stack. Options: a cron job on the host, or a
-   separate backup service in `immich/`.
-3. **Upload directory**: whether uploads through the app are allowed. If yes, back up `upload/`.
-4. **Model download**: the machine-learning container needs internet once. Alternative: download the
-   models on a machine with internet access and copy them into the model cache, then remove the
-   `default` network from `immich-machine-learning`.
-5. **Healthchecks**: not set for `immich-server` and `immich-machine-learning`. The official compose
-   file was not checked for an HTTP health endpoint in this version. Add one after checking it against
-   the running image.
-6. **Not tested here**: this environment has no Docker. `docker compose config`, the start and the
-   restore test have **not** been run. They must run before the stack is deployed to the server.
+1. **PostgreSQL 14 end of life (November 2026):** when does the database move to a supported major
+   version, and does a newer Immich release support it? Requires a dump and restore.
+2. **Backup target** for the database dumps and the originals: which medium and who runs the copy.
+3. **Backup job**: not in the root `backup` container. Options: a cron job on the host, or a separate
+   backup service.
+4. **Uploads through the app:** allowed or not. If allowed, `upload/` needs a backup.
+5. **Model download:** the one-time internet access of `immich-machine-learning`. Alternative: download
+   the models elsewhere, copy them into the model cache, then remove `default` from that service.
+6. **Health checks** for `immich-server` and `immich-machine-learning` are not set. The image's HTTP
+   endpoint was not verified. Add them after checking against the running image.
+7. **Not tested here:** this machine had no Docker, so `docker compose config`, the start and the
+   restore test have **not** been run.
