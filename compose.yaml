@@ -270,11 +270,11 @@ services:
       # Writable: thumbnails, transcoded videos, Immich's own database dumps and files uploaded
       # through the app. Only the thumbnails are regenerable. See immich/README.md.
       - ${DATA_DIR}/immich/upload:/data
-      # Read-only: the original photos, one folder per NAS share, mounted by
+      # Read-only: the original photos, one folder per NAS share (1, 2, 3), mounted by
       # server/immich-originals-mount.sh. Each folder is added as its own external library.
-      - /mnt/immich-originals/darius:/mnt/originals/darius:ro
-      - /mnt/immich-originals/ela:/mnt/originals/ela:ro
-      - /mnt/immich-originals/jaron:/mnt/originals/jaron:ro
+      - /mnt/immich-originals/1:/mnt/originals/1:ro
+      - /mnt/immich-originals/2:/mnt/originals/2:ro
+      - /mnt/immich-originals/3:/mnt/originals/3:ro
       - /etc/localtime:/etc/localtime:ro
 
   # CLIP embeddings (smart search) and face recognition. CPU image. Needs outbound access once,

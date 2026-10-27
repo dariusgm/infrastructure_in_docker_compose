@@ -3,8 +3,8 @@
 # One mount per folder, below /mnt/immich-originals/<name>. All folders use the same NAS user
 # (IMMICH_SMB_USERNAME), which has read rights only. Separate from the Paperless consume share.
 #
-# Folders are the names in FOLDERS below. Each one needs IMMICH_SMB_<NAME>_SHARE and
-# IMMICH_SMB_<NAME>_SUBPATH in the .env file.
+# Folders are the numbers in FOLDERS below. Each one needs IMMICH_SMB_<N>_SHARE and
+# IMMICH_SMB_<N>_SUBPATH in the .env file.
 #
 # Runs as root, called by deploy.py after bootstrap.sh. Idempotent: the managed fstab block is
 # replaced on every run, and each folder is remounted with the new options.
@@ -16,7 +16,7 @@ set -euo pipefail
 ENV_FILE="${1:?usage: immich-originals-mount.sh <env file> <run_user>}"
 RUN_USER="${2:?usage: immich-originals-mount.sh <env file> <run_user>}"
 
-FOLDERS=(darius ela jaron)
+FOLDERS=(1 2 3)
 BASE=/mnt/immich-originals
 CRED_DIR=/etc/infrastructure
 CRED_FILE="$CRED_DIR/immich-smb.cred"
