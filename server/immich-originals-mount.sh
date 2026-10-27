@@ -65,8 +65,9 @@ RUN_GID="$(id -g "$RUN_USER")"
 
 echo "==> Credentials file (root only)"
 install -d -m 0700 "$CRED_DIR"
-umask 077
-printf 'username=%s\npassword=%s\n' "$IMMICH_SMB_USERNAME" "$IMMICH_SMB_PASSWORD" > "$CRED_FILE"
+# The umask applies to this subshell only. A umask of 077 in the main script would create the
+# mount base directory as 0700, and the rootless Docker daemon could then not reach the folders.
+(umask 077; printf 'username=%s\npassword=%s\n' "$IMMICH_SMB_USERNAME" "$IMMICH_SMB_PASSWORD" > "$CRED_FILE")
 
 # ro: nothing can be written through these mounts. file_mode/dir_mode 0444/0555: no write bits.
 OPTIONS="ro,credentials=${CRED_FILE},uid=${RUN_UID},gid=${RUN_GID},file_mode=0444,dir_mode=0555,_netdev,nofail"
@@ -108,6 +109,8 @@ fi
 
 echo "==> Mount folders (read-only)"
 mkdir -p "$BASE"
+# Readable and traversable for the rootless Docker daemon, which runs as the deploy user.
+chmod 0755 "$BASE"
 for folder in "${FOLDERS[@]}"; do
   mkdir -p "$BASE/$folder"
   if mountpoint -q "$BASE/$folder"; then
