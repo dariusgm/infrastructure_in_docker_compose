@@ -69,7 +69,7 @@ internet.
 
 | Host path | Container path | Access | Content | Backup needed |
 | --- | --- | --- | --- | --- |
-| `/mnt/immich-originals` (host, SMB from the NAS) | `/mnt/originals` | **read-only** | The original photos | **Yes, separately, not by this stack.** A read-only mount does not protect against a failing disk. |
+| `/mnt/immich-originals/{darius,ela,jaron}` (host, SMB from the NAS) | `/mnt/originals/{darius,ela,jaron}` | **read-only** | The original photos, one folder per NAS share | **Yes, separately, not by this stack.** A read-only mount does not protect against a failing disk. |
 | `${DATA_DIR}/immich/upload` | `/data` | read-write | Thumbnails, transcoded videos, Immich's own database dumps (`backups/`), files uploaded through the app (`upload/`) | See below |
 | `${DATA_DIR}/immich/postgres18` | `/var/lib/postgresql` | read-write | Database: albums, faces, search index, file paths | **Yes.** Daily `pg_dump` to a second, independent target. |
 | `${DATA_DIR}/immich/model-cache` | `/cache` | read-write | CLIP and face models | No. Downloaded again on demand. |
@@ -124,14 +124,15 @@ stopped stack with the same Immich version and an empty `${DATA_DIR}/immich/post
 
 1. Add the Immich values to `.env` (copy them from `.env.example`, section "Photo archive"):
    `IMMICH_DB_PASSWORD` and `IMMICH_REDIS_PASSWORD` (generate each with `openssl rand -hex 24`),
-   `IMMICH_SMB_HOST`, `IMMICH_SMB_SHARE`, `IMMICH_SMB_SUBPATH`, `IMMICH_SMB_USERNAME`, `IMMICH_SMB_PASSWORD`
+   `IMMICH_SMB_HOST`, `IMMICH_SMB_USERNAME`, `IMMICH_SMB_PASSWORD` (one read-only NAS user), and per folder
+   `IMMICH_SMB_<NAME>_SHARE` and `IMMICH_SMB_<NAME>_SUBPATH` for `DARIUS`, `ELA` and `JARON`
    (the read-only NAS user and the folder with the year folders). `IMMICH_TIMEZONE` is optional.
    The originals are mounted by `server/immich-originals-mount.sh`, which `deploy.py` runs. It mounts
-   the share read-only at `/mnt/immich-originals`, with its own credentials file
+   each folder read-only below `/mnt/immich-originals/<name>`, with its own credentials file
    (`/etc/infrastructure/immich-smb.cred`, root only), separate from the Paperless share.
    **The stack does not start without the first three values**, and that includes the existing
    services. Set them before the next deploy.
-2. Check the originals are mounted on the host: `findmnt /mnt/immich-originals` must show `cifs` with `ro`.
+2. Check the originals are mounted on the host: `findmnt /mnt/immich-originals/darius` (and `ela`, `jaron`) must show `cifs` with `ro`.
    Without the mount, the container sees an empty folder.
 3. Deploy: `python3 deploy.py deploy`. The data folders below `DATA_DIR` are created by Docker.
 4. Open `http://<HOST_IP>:2283`.
@@ -141,7 +142,7 @@ stopped stack with the same Immich version and an empty `${DATA_DIR}/immich/post
 1. **Admin account:** the first user who signs up becomes the administrator. Keep its password in a
    password manager.
 2. **External library:** Administration > External Libraries > Create library. Owner: the admin.
-   Import path: `/mnt/originals`. Start the scan. Immich only reads there.
+   Import path: `/mnt/originals/darius`, then the same for `ela` and `jaron`, one library each. Start the scan. Immich only reads there.
 3. **Read-only check:** Immich may report that it cannot write a marker file into the import path.
    Check the Immich documentation for v3.3.5 for how to handle this. Any marker file is created on the
    NAS side, because the mount is read-only inside the container.
