@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dienste</title>
+<style>
+  :root { color-scheme: light dark; --fg: #1d1d1f; --bg: #f5f5f7; --card: #fff; --muted: #6e6e73; }
+  @media (prefers-color-scheme: dark) { :root { --fg: #f5f5f7; --bg: #1c1c1e; --card: #2c2c2e; --muted: #98989d; } }
+  body { margin: 0; padding: 16px; font-family: system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+  h1 { font-size: 1.4rem; margin: 8px 0 16px; }
+  ul { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+  a { display: block; padding: 14px 16px; border-radius: 10px; background: var(--card); color: var(--fg); text-decoration: none; }
+  a:hover, a:focus { outline: 2px solid #0a84ff; }
+  .name { font-weight: 600; }
+  .meta { color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
+</style>
+</head>
+<body>
+<h1>Dienste</h1>
+<ul id="list"></ul>
+<script>
+  // Links use the host name this page was opened with, so no address is written into the page.
+  var host = window.location.hostname;
+  var services = [
+    { name: "Paperless", port: 8083, path: "/", note: "Dokumentenverwaltung" },
+    { name: "Immich", port: 2283, path: "/", note: "Fotoarchiv" },
+    { name: "Pi-hole", port: 8082, path: "/admin", note: "DNS und Werbeblocker" }
+  ];
+  var list = document.getElementById("list");
+  services.forEach(function (s) {
+    var li = document.createElement("li");
+    var a = document.createElement("a");
+    a.href = "http://" + host + ":" + s.port + s.path;
+    var name = document.createElement("div");
+    name.className = "name";
+    name.textContent = s.name;
+    var meta = document.createElement("div");
+    meta.className = "meta";
+    meta.textContent = s.note + " · Port " + s.port;
+    a.appendChild(name);
+    a.appendChild(meta);
+    li.appendChild(a);
+    list.appendChild(li);
+  });
+</script>
+</body>
+</html>

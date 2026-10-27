@@ -234,6 +234,17 @@ services:
       retries: 3
       start_period: 5m
 
+  # Start page with links to the web interfaces of the stack, on one port (8080). Static,
+  # built from dashboard/. Links use the host name the page is opened with.
+  dashboard:
+    build: ./dashboard
+    image: infrastructure-dashboard:1
+    pull_policy: build
+    restart: unless-stopped
+    logging: *logging
+    ports:
+      - "${HOST_IP}:8080:8080"
+
   # --- Immich: photo archive with CPU-based smart search and face recognition ---
   # Originals are mounted read-only. See immich/README.md for the volumes, the backups and
   # the manual steps after the first start.
