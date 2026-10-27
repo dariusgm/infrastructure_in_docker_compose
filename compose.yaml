@@ -291,10 +291,11 @@ services:
     volumes:
       - ${DATA_DIR}/immich/model-cache:/cache
 
-  # PostgreSQL with the VectorChord and pgvectors extensions Immich needs. Immich's own image,
-  # pinned by digest. Not the stock postgres image, and not the Paperless database.
+  # PostgreSQL 18 with pgvector and VectorChord, built from immich/db/Dockerfile on the
+  # official postgres:18.6 image. Not the Paperless database. See immich/README.md.
   immich-db:
-    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
+    build: ./immich/db
+    image: infrastructure-immich-db:18.6-vectorchord1.1.1
     restart: unless-stopped
     logging: *logging
     networks:
@@ -307,7 +308,8 @@ services:
       POSTGRES_DB: immich
       POSTGRES_INITDB_ARGS: "--data-checksums"
     volumes:
-      - ${DATA_DIR}/immich/postgres:/var/lib/postgresql/data
+      # PostgreSQL 18 keeps its files below /var/lib/postgresql (not .../data).
+      - ${DATA_DIR}/immich/postgres18:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U immich -d immich"]
       interval: 10s

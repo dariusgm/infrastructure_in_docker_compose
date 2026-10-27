@@ -19,22 +19,36 @@ https://github.com/immich-app/immich/blob/v3.3.5/docker/docker-compose.yml
 | Image | Version | Why this one |
 | --- | --- | --- |
 | `immich-server`, `immich-machine-learning` | `v3.3.5` | Latest stable release |
-| `immich-db` | `ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0` | Immich's own image with the vector extensions. Release v3.3.5 ships it. |
+| `immich-db` | `immich/db/Dockerfile`: `postgres:18.6-trixie` + pgvector 0.8.5 + VectorChord 1.1.1 | Built locally, pinned by version and SHA256. Not Immich's own image. |
 | `immich-redis` | `valkey/valkey:9` (digest of v3.3.5) | Valkey 9 as used by the release |
 
-Not taken: VectorChord 1.1.1 is the newest VectorChord, but v3.3.5 does not ship with it. Newer
-versions of the database image or Valkey would be an untested combination with Immich. The
-`main` branch of Immich has a newer Valkey digest, which is not in a release yet.
+**Database decision:** Immich's own image is PostgreSQL 14, which reaches end of life in November
+2026 (not verified against an official source). The database therefore runs on PostgreSQL 18.6, the
+same major version as Paperless, built from `immich/db/Dockerfile`:
 
-**Open:** PostgreSQL 14 (in the image above) reaches end of life in November 2026. Immich v3.3.5
-does not offer a newer PostgreSQL image, so the database stays on 14 for now. Moving to a newer major
-version needs a dump and restore and a release of Immich that supports it. Check for that before
-the stack goes to the server, and again after each Immich release.
+- Base: official `postgres:18.6-trixie`.
+- pgvector 0.8.5, compiled from its source tag, checked against its SHA256 sum. pgvector stays
+  installed, because VectorChord uses its types. Its README lists support for PostgreSQL 13 and up.
+- VectorChord 1.1.1 from its release `.deb`, checked against its SHA256 sum. Preloaded with
+  `shared_preload_libraries=vchord.so`. VectorChord is the vector extension Immich uses. pgvecto.rs
+  was dropped in Immich 3.0.
+- The Immich documentation lists PostgreSQL `>= 14, < 20` and VectorChord `>= 0.3, < 2.0` as known
+  to work. This combination is within that range, but it is **not** the image the v3.3.5 release
+  ships with. That was a deliberate choice, and it needs to be tested before the server deploy.
+
+The database files moved to `${DATA_DIR}/immich/postgres18`. Starting with PostgreSQL 18, the
+official image stores its data below `/var/lib/postgresql`. The earlier PostgreSQL 14 folder
+`${DATA_DIR}/immich/postgres` is no longer used. Its owner is the container user, so deleting it
+needs `sudo`.
+
+A change from PostgreSQL 14 to 18 means a new database, and Immich scans and processes the library
+again. Accepted on the test system, because the originals are unchanged. On the server, the first
+data would be the same as the test, so it makes sense to decide this before the first deploy.
 
 ## Existing PostgreSQL instance (not used here)
 
 Paperless uses its own PostgreSQL (`paperless-db`, image `postgres:18.6-trixie`). Immich does not
-use it. The vector extension is in Immich's own database image. Whether the Paperless database has
+use it. Immich has its own database with the extensions above. Whether the Paperless database has
 the extension was not checked, and it was not changed.
 
 ## Containers and networks
@@ -57,7 +71,7 @@ internet.
 | --- | --- | --- | --- | --- |
 | `/mnt/immich-originals` (host, SMB from the NAS) | `/mnt/originals` | **read-only** | The original photos | **Yes, separately, not by this stack.** A read-only mount does not protect against a failing disk. |
 | `${DATA_DIR}/immich/upload` | `/data` | read-write | Thumbnails, transcoded videos, Immich's own database dumps (`backups/`), files uploaded through the app (`upload/`) | See below |
-| `${DATA_DIR}/immich/postgres` | `/var/lib/postgresql/data` | read-write | Database: albums, faces, search index, file paths | **Yes.** Daily `pg_dump` to a second, independent target. |
+| `${DATA_DIR}/immich/postgres18` | `/var/lib/postgresql` | read-write | Database: albums, faces, search index, file paths | **Yes.** Daily `pg_dump` to a second, independent target. |
 | `${DATA_DIR}/immich/model-cache` | `/cache` | read-write | CLIP and face models | No. Downloaded again on demand. |
 | Valkey | none | none | Cache and job queue | No. Rebuilt by Immich. |
 
@@ -78,7 +92,7 @@ the docs of v3.3.5) are on the same disk. They are not a substitute for the off-
 
 The database is the only state that is neither regenerable nor in the originals. Immich's own dumps
 are on the same disk, so the off-site copy is the real backup. Do not copy the files of
-`${DATA_DIR}/immich/postgres` while the database runs.
+`${DATA_DIR}/immich/postgres18` while the database runs.
 
 ```bash
 cd ~/<DEPLOY_DIR>
@@ -104,7 +118,7 @@ docker compose exec -T immich-db dropdb -U immich restore_test
 ```
 
 The count must match the number of photos Immich shows in the UI. For a full recovery, restore into a
-stopped stack with the same Immich version and an empty `${DATA_DIR}/immich/postgres`.
+stopped stack with the same Immich version and an empty `${DATA_DIR}/immich/postgres18`.
 
 ## Setup
 
@@ -157,8 +171,9 @@ After changing `.env` or `compose.yaml`, run `python3 deploy.py deploy`. A plain
 
 ## Open decisions
 
-1. **PostgreSQL 14 end of life (November 2026):** when does the database move to a supported major
-   version, and does a newer Immich release support it? Requires a dump and restore.
+1. **Immich on a non-release database image:** the database runs on PostgreSQL 18 with our own build,
+   not the image of Immich v3.3.5. Test it on the test system (scan, search, faces, backup and restore)
+   before the server deploy. Check again with each Immich release whether its default image changes.
 2. **Backup target** for the database dumps and the originals: which medium and who runs the copy.
 3. **Backup job**: not in the root `backup` container. Options: a cron job on the host, or a separate
    backup service.
