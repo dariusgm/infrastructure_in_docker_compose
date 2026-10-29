@@ -357,6 +357,30 @@ services:
       timeout: 5s
       retries: 5
 
+  # --- Vaultwarden: password manager, Rust server for the Bitwarden clients (see vaultwarden/README.md) ---
+  # One container, SQLite database below DATA_DIR. No internal services needed.
+  vaultwarden:
+    image: docker.io/vaultwarden/server:1.37.4
+    restart: unless-stopped
+    logging: *logging
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "${HOST_IP}:8084:80"
+    environment:
+      # Address the clients and the web vault use. Links are built from it.
+      DOMAIN: ${VAULTWARDEN_URL:-http://${HOST_IP}:8084}
+      # Creating accounts is off by default. Set to true only to create the first account, then back to false.
+      SIGNUPS_ALLOWED: ${VAULTWARDEN_SIGNUPS_ALLOWED:-false}
+      # Password for the admin page at /admin. Required.
+      ADMIN_TOKEN: ${VAULTWARDEN_ADMIN_TOKEN:?Set VAULTWARDEN_ADMIN_TOKEN in .env}
+      # HTTPS. Browsers only run the web vault's crypto on a secure context. The certificate is
+      # issued by the local CA in ${DATA_DIR}/vaultwarden-tls (see vaultwarden/README.md).
+      ROCKET_TLS: '{certs="/tls/cert.pem",key="/tls/key.pem"}'
+    volumes:
+      - ${DATA_DIR}/vaultwarden:/data
+      - ${DATA_DIR}/vaultwarden-tls:/tls:ro
+
 # Example component:
 #
 #  example:
