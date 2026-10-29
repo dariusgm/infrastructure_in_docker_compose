@@ -47,3 +47,35 @@ curl -s http://<HOST_IP>:3000/api/health              # Grafana answers
 
 The Grafana data source "Prometheus" should show "Data source is working" under
 Connections, Data sources.
+
+## Exporters and application metrics
+
+Each service that is scraped has an exporter or its own metrics endpoint, and joins the
+`monitoring` network so Prometheus can reach it. None publishes a port.
+
+| Job | Reads | Notes |
+| --- | --- | --- |
+| `postgres-paperless`, `postgres-immich` | `paperless-db`, `immich-db` | postgres_exporter v0.20.1. Logs in as the read-only role `postgres_exporter` (pg_monitor). |
+| `valkey-paperless`, `valkey-immich` | `paperless-broker`, `immich-redis` | redis_exporter v1.96.0 (works with Valkey). |
+| `immich` | `immich-server:8081` | Immich's own metrics, `IMMICH_TELEMETRY_INCLUDE=all`. |
+| `url-proxy` | `url-proxy:8090/stub_status` | nginx-prometheus-exporter 1.5.3. The stub_status server is in `url-proxy/nginx.conf`. |
+
+### Postgres health checks
+
+Each database's health check runs `pg_isready` and, in addition, asks its exporter for `/metrics`
+(`monitoring/check-metrics.sh`). A database is healthy only when both answer. The exporters do not
+wait for their database, so the check cannot deadlock at start.
+
+### Roles
+
+`monitoring/postgres/create-exporter-role.sql` creates or updates the role `postgres_exporter` with
+the password from `PAPERLESS_EXPORTER_PASSWORD` / `IMMICH_EXPORTER_PASSWORD`. The `*-db-setup`
+services run it once after the database is healthy. It is safe to run again.
+
+Not yet covered: Paperless application metrics (needs an API token created in Paperless), Vaultwarden
+(no native metrics endpoint), and Pi-hole (v6 exporter not verified yet).
+
+### Checks on the server
+
+Prometheus is not published, so check through Grafana: Explore, data source Prometheus. `pg_up`,
+`redis_up`, `nginx_up` and `up{job="immich"}` should show 1 for every instance.

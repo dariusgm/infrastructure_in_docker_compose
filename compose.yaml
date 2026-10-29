@@ -47,6 +47,10 @@ services:
     build: ./url-proxy
     restart: unless-stopped
     logging: *logging
+    # "monitoring" serves the stub_status page to the nginx exporter. Port 8090, not published.
+    networks:
+      - default
+      - monitoring
     ports:
       - "${HOST_IP}:8081:8081"
     volumes:
@@ -142,11 +146,14 @@ services:
       POSTGRES_PASSWORD: ${PAPERLESS_DB_PASSWORD:?Set PAPERLESS_DB_PASSWORD in .env}
     volumes:
       - ${DATA_DIR}/paperless/postgres:/var/lib/postgresql
+      - ./monitoring/check-metrics.sh:/usr/local/bin/check-metrics.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U paperless -d paperless"]
+      # Healthy when the database accepts connections and the exporter's metrics endpoint answers.
+      test: ["CMD-SHELL", "pg_isready -U paperless -d paperless && check-metrics.sh paperless-db-exporter 9187"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 60s
 
   # Task broker (Valkey, Redis-compatible). Holds the queue of pending document tasks.
   # Append-only persistence keeps queued tasks across restarts. The password is required.
@@ -264,16 +271,21 @@ services:
         condition: service_healthy
       immich-machine-learning:
         condition: service_started
-    # "default" keeps the published port reachable; "immich-backend" connects to the internal services.
+    # "default" keeps the published port reachable; "immich-backend" connects to the internal services;
+    # "monitoring" lets Prometheus scrape the metrics port.
     networks:
       - default
       - immich-backend
+      - monitoring
     ports:
       - "${HOST_IP}:2283:2283"
     security_opt:
       - no-new-privileges:true
     environment:
       TZ: ${IMMICH_TIMEZONE:-UTC}
+      # Prometheus metrics on IMMICH_API_METRICS_PORT, read by Prometheus on the monitoring network only.
+      IMMICH_TELEMETRY_INCLUDE: all
+      IMMICH_API_METRICS_PORT: "8081"
       DB_HOSTNAME: immich-db
       DB_USERNAME: immich
       DB_PASSWORD: ${IMMICH_DB_PASSWORD:?Set IMMICH_DB_PASSWORD in .env}
@@ -329,12 +341,14 @@ services:
     volumes:
       # PostgreSQL 18 keeps its files below /var/lib/postgresql (not .../data).
       - ${DATA_DIR}/immich/postgres18:/var/lib/postgresql
+      - ./monitoring/check-metrics.sh:/usr/local/bin/check-metrics.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U immich -d immich"]
+      # Healthy when the database accepts connections and the exporter's metrics endpoint answers.
+      test: ["CMD-SHELL", "pg_isready -U immich -d immich && check-metrics.sh immich-db-exporter 9187"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 30s
+      start_period: 60s
 
   # Valkey (Redis-compatible) cache and job queue for Immich. Password required. No volume:
   # Immich rebuilds its content, so it needs neither persistence nor backup.
@@ -462,6 +476,113 @@ services:
     volumes:
       - ${DATA_DIR}/vaultwarden:/data
       - ${DATA_DIR}/vaultwarden-tls:/tls:ro
+
+  # --- Metrics exporters: read the services and expose their metrics to Prometheus (see monitoring/README.md) ---
+  # Each exporter joins the network of the service it reads and the monitoring network. Prometheus
+  # reads them there. None publishes a port. The exporters start without waiting for their database:
+  # they answer /metrics at once and report the database as down until it is reachable.
+
+  # One-shot: creates or updates the read-only exporter role in the Paperless database.
+  paperless-db-setup:
+    image: docker.io/library/postgres:18.6-trixie
+    restart: "no"
+    logging: *logging
+    depends_on:
+      paperless-db:
+        condition: service_healthy
+    networks:
+      - backend
+    environment:
+      PGPASSWORD: ${PAPERLESS_DB_PASSWORD}
+      EXPORTER_PASSWORD: ${PAPERLESS_EXPORTER_PASSWORD:?Set PAPERLESS_EXPORTER_PASSWORD in .env}
+    volumes:
+      - ./monitoring/postgres/create-exporter-role.sql:/sql/create-exporter-role.sql:ro
+    command:
+      - sh
+      - -c
+      - psql -h paperless-db -U paperless -d paperless -v exporter_password="$$EXPORTER_PASSWORD" -f /sql/create-exporter-role.sql
+
+  paperless-db-exporter:
+    image: docker.io/prometheuscommunity/postgres-exporter:v0.20.1
+    restart: unless-stopped
+    logging: *logging
+    networks:
+      - backend
+      - monitoring
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      DATA_SOURCE_NAME: postgresql://postgres_exporter:${PAPERLESS_EXPORTER_PASSWORD:?Set PAPERLESS_EXPORTER_PASSWORD in .env}@paperless-db:5432/paperless?sslmode=disable
+
+  # One-shot: creates or updates the read-only exporter role in the Immich database.
+  immich-db-setup:
+    image: docker.io/library/postgres:18.6-trixie
+    restart: "no"
+    logging: *logging
+    depends_on:
+      immich-db:
+        condition: service_healthy
+    networks:
+      - immich-backend
+    environment:
+      PGPASSWORD: ${IMMICH_DB_PASSWORD}
+      EXPORTER_PASSWORD: ${IMMICH_EXPORTER_PASSWORD:?Set IMMICH_EXPORTER_PASSWORD in .env}
+    volumes:
+      - ./monitoring/postgres/create-exporter-role.sql:/sql/create-exporter-role.sql:ro
+    command:
+      - sh
+      - -c
+      - psql -h immich-db -U immich -d immich -v exporter_password="$$EXPORTER_PASSWORD" -f /sql/create-exporter-role.sql
+
+  immich-db-exporter:
+    image: docker.io/prometheuscommunity/postgres-exporter:v0.20.1
+    restart: unless-stopped
+    logging: *logging
+    networks:
+      - immich-backend
+      - monitoring
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      DATA_SOURCE_NAME: postgresql://postgres_exporter:${IMMICH_EXPORTER_PASSWORD:?Set IMMICH_EXPORTER_PASSWORD in .env}@immich-db:5432/immich?sslmode=disable
+
+  paperless-broker-exporter:
+    image: docker.io/oliver006/redis_exporter:v1.96.0
+    restart: unless-stopped
+    logging: *logging
+    networks:
+      - backend
+      - monitoring
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      REDIS_ADDR: redis://paperless-broker:6379
+      REDIS_PASSWORD: ${PAPERLESS_BROKER_PASSWORD:?Set PAPERLESS_BROKER_PASSWORD in .env}
+
+  immich-redis-exporter:
+    image: docker.io/oliver006/redis_exporter:v1.96.0
+    restart: unless-stopped
+    logging: *logging
+    networks:
+      - immich-backend
+      - monitoring
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      REDIS_ADDR: redis://immich-redis:6379
+      REDIS_PASSWORD: ${IMMICH_REDIS_PASSWORD:?Set IMMICH_REDIS_PASSWORD in .env}
+
+  # Reads the nginx stub_status page of url-proxy (see url-proxy/nginx.conf).
+  url-proxy-exporter:
+    image: docker.io/nginx/nginx-prometheus-exporter:1.5.3
+    restart: unless-stopped
+    logging: *logging
+    networks:
+      - monitoring
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - -nginx.scrape-uri=http://url-proxy:8090/stub_status
 
 # Example component:
 #

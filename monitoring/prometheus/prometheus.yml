@@ -9,3 +9,43 @@ scrape_configs:
   - job_name: prometheus
     static_configs:
       - targets: ["localhost:9090"]
+
+  # PostgreSQL, through postgres_exporter (role postgres_exporter, see monitoring/postgres/).
+  - job_name: postgres-paperless
+    static_configs:
+      - targets: ["paperless-db-exporter:9187"]
+        labels:
+          service: paperless-db
+
+  - job_name: postgres-immich
+    static_configs:
+      - targets: ["immich-db-exporter:9187"]
+        labels:
+          service: immich-db
+
+  # Valkey brokers, through redis_exporter.
+  - job_name: valkey-paperless
+    static_configs:
+      - targets: ["paperless-broker-exporter:9121"]
+        labels:
+          service: paperless-broker
+
+  - job_name: valkey-immich
+    static_configs:
+      - targets: ["immich-redis-exporter:9121"]
+        labels:
+          service: immich-redis
+
+  # Immich server, its own metrics (IMMICH_TELEMETRY_INCLUDE=all in compose.yaml).
+  - job_name: immich
+    static_configs:
+      - targets: ["immich-server:8081"]
+        labels:
+          service: immich-server
+
+  # url-proxy (nginx), through nginx-prometheus-exporter.
+  - job_name: url-proxy
+    static_configs:
+      - targets: ["url-proxy-exporter:9113"]
+        labels:
+          service: url-proxy
