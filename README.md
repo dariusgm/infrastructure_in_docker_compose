@@ -41,8 +41,9 @@ The deployment is: clone this repository on the server, install the dependencies
 | `url-proxy/` | Image for the generic nginx URL proxy and its cache. See `url-proxy/README.md`. |
 | `pihole/` | Notes for Pi-hole, the network-wide DNS server with ad blocking. See `pihole/README.md`. |
 | `paperless/` | Notes for Paperless-ngx, the document management system, and its services. See `paperless/README.md`. |
-| `dashboard/` | Static start page on port 8080 with links to the web interfaces (Paperless, Immich, Pi-hole, Grafana). |
+| `dashboard/` | Static start page on port 8080 with links to the web interfaces (Paperless, Immich, Pi-hole, Vaultwarden, Grafana). |
 | `monitoring/` | Prometheus (metrics) and Grafana (graphs). Grafana on port 3000. See `monitoring/README.md`. |
+| `vaultwarden/` | Notes for Vaultwarden, the Rust server for the Bitwarden clients (password manager). See `vaultwarden/README.md`. |
 | `immich/` | Notes for Immich, the photo archive (read-only originals, smart search, face recognition). The services are in `compose.yaml`. See `immich/README.md`. |
 | `backup/` | Image and notes for the daily backup of the databases and files. See `backup/README.md`. |
 | `server/consume-mount.sh` | Mounts the consume share of the NAS on the host at `/mnt/paperless-consume`. Run by `deploy.py`. |
@@ -73,6 +74,6 @@ restore it.
 Check on the server (as the deploy user, and with sudo for ufw):
 
 ```bash
-ss -tln | grep -E ':(53|445|3000|3142|8081|8082|8083)\b'   # every listener shows HOST_IP, not 0.0.0.0
+ss -tln | grep -E ':(53|445|3000|3142|8081|8082|8083|8084)\b'   # every listener shows HOST_IP, not 0.0.0.0
 sudo ufw status verbose                                # default deny incoming, allow from ALLOWED_NETWORK
 ```
