@@ -49,3 +49,20 @@ scrape_configs:
       - targets: ["url-proxy-exporter:9113"]
         labels:
           service: url-proxy
+
+  # Every container: CPU, memory, disk I/O and network I/O (cAdvisor).
+  - job_name: containers
+    static_configs:
+      - targets: ["cadvisor:8080"]
+
+  # Host: memory pressure, disk, network (node-exporter).
+  - job_name: host
+    static_configs:
+      - targets: ["node-exporter:9100"]
+
+  # Paperless statistics (prometheus-paperless-exporter).
+  - job_name: paperless
+    static_configs:
+      - targets: ["paperless-app-exporter:8081"]
+        labels:
+          service: paperless

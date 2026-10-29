@@ -6,7 +6,7 @@ Prometheus collects metrics and Grafana shows them as graphs. Both run as servic
 - **Grafana**: web UI on port 3000 of `HOST_IP`, `http://<HOST_IP>:3000`. Sign in as `admin` with
   `GRAFANA_ADMIN_PASSWORD` from `.env`. Sign-up and anonymous access are off.
 - **Prometheus**: no published port. Only Grafana reaches it, on the internal `monitoring`
-  network. Prometheus keeps its data for `PROMETHEUS_RETENTION` (default 30d).
+  network. Prometheus keeps its data for `PROMETHEUS_RETENTION` (default 7d).
 
 ## Files
 
@@ -79,3 +79,32 @@ Not yet covered: Paperless application metrics (needs an API token created in Pa
 
 Prometheus is not published, so check through Grafana: Explore, data source Prometheus. `pg_up`,
 `redis_up`, `nginx_up` and `up{job="immich"}` should show 1 for every instance.
+
+## Resources of every container and the host
+
+- **cAdvisor** (`cadvisor`) reports, for every container on the host: CPU, memory (working set),
+  disk I/O and network I/O. The label `name` is the container name, for example
+  `infrastructure-paperless-1`. Job `containers`.
+- **node-exporter** reports the host: memory pressure (PSI, `node_pressure_memory_*`), CPU, memory,
+  disk and network. Job `host`.
+- **paperless-app-exporter** reports Paperless statistics (documents, tags, storage, tasks). Job
+  `paperless`. It reads the API with the token of the user `metrics`:
+  `monitoring/paperless/create-metrics-user.py` creates that user with view permissions only. The
+  user is set as staff, because the Paperless log endpoint answers 403 otherwise; it is not a
+  superuser. The token is stored as `PAPERLESS_METRICS_TOKEN` in `.env`.
+
+## Retention
+
+Prometheus keeps 7 days (`PROMETHEUS_RETENTION`, default `7d`). Older data is removed automatically
+when Prometheus compacts its storage. Change the value in `.env` and restart Prometheus.
+
+## Debugging
+
+Prometheus is not published on the network. Use Grafana: Explore, data source Prometheus, and
+enter any PromQL query. Prometheus' own targets page is available inside the compose network only.
+
+## Alerts (not yet set up)
+
+Alert rules and notifications need Alertmanager, which is not in the stack yet. The rules will go
+in `monitoring/prometheus/` and the notification channel (for example e-mail or a push service)
+needs to be chosen first.

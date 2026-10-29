@@ -102,6 +102,7 @@ services:
     networks:
       - default
       - backend
+      - monitoring
     ports:
       - "${HOST_IP}:8083:8000"
     security_opt:
@@ -408,7 +409,7 @@ services:
     command:
       - --config.file=/etc/prometheus/prometheus.yml
       - --storage.tsdb.path=/prometheus
-      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-30d}
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-7d}
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ${DATA_DIR}/monitoring/prometheus:/prometheus
@@ -583,6 +584,55 @@ services:
       - no-new-privileges:true
     command:
       - -nginx.scrape-uri=http://url-proxy:8090/stub_status
+
+  # --- Host and container resources ---
+  # cAdvisor reports CPU, memory, disk I/O and network I/O for every container. node-exporter reports
+  # the host's memory pressure, disk and network. Both are read by Prometheus on the monitoring network.
+  cadvisor:
+    image: ghcr.io/google/cadvisor:v0.60.4
+    restart: unless-stopped
+    logging: *logging
+    networks:
+      - monitoring
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+
+  node-exporter:
+    image: docker.io/prom/node-exporter:v1.12.1
+    restart: unless-stopped
+    logging: *logging
+    pid: host
+    networks:
+      - monitoring
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - --path.rootfs=/host
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+    volumes:
+      - /:/host:ro
+
+  # Paperless statistics (documents, tags, storage, tasks). Reads the Paperless API with the token of
+  # the read-only user "metrics", see monitoring/paperless/create-metrics-user.py.
+  paperless-app-exporter:
+    image: ghcr.io/hansmi/prometheus-paperless-exporter:v0.0.10
+    restart: unless-stopped
+    logging: *logging
+    networks:
+      - monitoring
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      PAPERLESS_URL: http://paperless:8000
+      # Empty until the metrics user exists. Then the exporter reports 401 instead of data.
+      PAPERLESS_AUTH_TOKEN: ${PAPERLESS_METRICS_TOKEN:-}
 
 # Example component:
 #
