@@ -1,0 +1,11 @@
+# Loads the dashboard JSON files from /var/lib/grafana-dashboards (monitoring/grafana/dashboards).
+apiVersion: 1
+
+providers:
+  - name: infrastructure
+    folder: Infrastructure
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    options:
+      path: /var/lib/grafana-dashboards

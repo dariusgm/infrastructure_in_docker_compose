@@ -26,6 +26,9 @@ networks:
   # do not share a network with the Paperless services. See immich/README.md.
   immich-backend:
     internal: true
+  # Prometheus and Grafana. Prometheus reaches its targets through it. See monitoring/README.md.
+  monitoring:
+    internal: true
 
 services:
   # Ubuntu package cache for every system on the network. Clients point apt at
@@ -356,6 +359,85 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # --- Monitoring: Prometheus collects metrics, Grafana shows them (see monitoring/README.md) ---
+  # Prometheus is reachable only through Grafana, so it publishes no port. The monitoring
+  # network is internal, and Grafana also joins the default network to publish its port.
+
+  # One-shot: gives the Prometheus and Grafana data directories to the UIDs the images run
+  # as. Under rootless Docker, container UID N maps to a subordinate host UID, so the
+  # directories created by the deploy user are not writable by the container users.
+  monitoring-init:
+    image: docker.io/library/busybox:1.37.0
+    restart: "no"
+    logging: *logging
+    command:
+      - sh
+      - -c
+      - chown -R 65534:65534 /prometheus && chown -R 472:0 /grafana
+    volumes:
+      - ${DATA_DIR}/monitoring/prometheus:/prometheus
+      - ${DATA_DIR}/monitoring/grafana:/grafana
+
+  # Time series database. Scrapes the targets listed in monitoring/prometheus/prometheus.yml.
+  prometheus:
+    image: docker.io/prom/prometheus:v3.15.1
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      monitoring-init:
+        condition: service_completed_successfully
+    networks:
+      - monitoring
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-30d}
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ${DATA_DIR}/monitoring/prometheus:/prometheus
+    healthcheck:
+      test: ["CMD", "promtool", "check", "healthy", "--url", "http://localhost:9090"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Dashboards. Web UI on port 3000 of HOST_IP. Only the admin account can sign in.
+  grafana:
+    image: docker.io/grafana/grafana:13.2.4
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      monitoring-init:
+        condition: service_completed_successfully
+      prometheus:
+        condition: service_healthy
+    networks:
+      - default
+      - monitoring
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "${HOST_IP}:3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      # The stack has no route to the internet, so no update checks and no telemetry.
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+    volumes:
+      - ${DATA_DIR}/monitoring/grafana:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana-dashboards:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 # Example component:
 #

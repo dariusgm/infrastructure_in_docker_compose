@@ -1,0 +1,11 @@
+# Prometheus configuration. Targets are added here as exporters are introduced.
+# Reload after a change: restart the prometheus container (docker compose restart prometheus).
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+scrape_configs:
+  # Prometheus scrapes itself, so the dashboards show that the database works.
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
