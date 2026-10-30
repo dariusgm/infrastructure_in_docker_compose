@@ -52,8 +52,36 @@
 </div>
 <p class="note">Host-Port ist der Port auf dem Server (HOST_IP). Die Links oben nutzen den Host-Namen, unter dem diese Seite geöffnet wurde.</p>
 
-<h2>Ohne veröffentlichten Port</h2>
-<p class="note">Diese Dienste laufen nur intern im Docker-Netzwerk und sind von außen nicht erreichbar: paperless-db, paperless-broker, paperless-gotenberg, paperless-tika, backup, immich-machine-learning, immich-db, immich-redis, prometheus, cadvisor, node-exporter, url-proxy-exporter, paperless-db-exporter, paperless-broker-exporter, paperless-app-exporter, immich-db-exporter, immich-redis-exporter, sowie die einmaligen Einrichtungsdienste monitoring-init, stalwart-init, paperless-db-setup und immich-db-setup.</p>
+<h2>Interne Dienste</h2>
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>Dienst</th><th>Netzwerk</th><th>Interne Adresse</th><th>Zweck</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>prometheus</td><td>monitoring</td><td>prometheus:9090</td><td>Metrik-Datenbank (nur über Grafana)</td></tr>
+    <tr><td>paperless-db</td><td>backend</td><td>paperless-db:5432</td><td>PostgreSQL für Paperless</td></tr>
+    <tr><td>paperless-broker</td><td>backend</td><td>paperless-broker:6379</td><td>Warteschlange für Paperless (Valkey)</td></tr>
+    <tr><td>paperless-gotenberg</td><td>backend</td><td>paperless-gotenberg:3000</td><td>Office-Dateien zu PDF</td></tr>
+    <tr><td>paperless-tika</td><td>backend</td><td>paperless-tika:9998</td><td>Textextraktion aus Dokumenten</td></tr>
+    <tr><td>backup</td><td>backend</td><td>–</td><td>Sicherungen, ohne Port</td></tr>
+    <tr><td>immich-db</td><td>immich-backend</td><td>immich-db:5432</td><td>PostgreSQL für Immich</td></tr>
+    <tr><td>immich-redis</td><td>immich-backend</td><td>immich-redis:6379</td><td>Cache für Immich (Valkey)</td></tr>
+    <tr><td>immich-machine-learning</td><td>immich-backend</td><td>immich-machine-learning:3003</td><td>Gesichtserkennung und Suche</td></tr>
+    <tr><td>immich-server</td><td>monitoring</td><td>immich-server:8081</td><td>Metriken von Immich</td></tr>
+    <tr><td>url-proxy</td><td>monitoring</td><td>url-proxy:8090/stub_status</td><td>Status für den Exporter</td></tr>
+    <tr><td>paperless-db-exporter</td><td>monitoring</td><td>paperless-db-exporter:9187</td><td>Metriken PostgreSQL Paperless</td></tr>
+    <tr><td>immich-db-exporter</td><td>monitoring</td><td>immich-db-exporter:9187</td><td>Metriken PostgreSQL Immich</td></tr>
+    <tr><td>paperless-broker-exporter</td><td>monitoring</td><td>paperless-broker-exporter:9121</td><td>Metriken Warteschlange Paperless</td></tr>
+    <tr><td>immich-redis-exporter</td><td>monitoring</td><td>immich-redis-exporter:9121</td><td>Metriken Cache Immich</td></tr>
+    <tr><td>url-proxy-exporter</td><td>monitoring</td><td>url-proxy-exporter:9113</td><td>Metriken URL-Proxy</td></tr>
+    <tr><td>paperless-app-exporter</td><td>monitoring</td><td>paperless-app-exporter:8081</td><td>Metriken Paperless</td></tr>
+    <tr><td>cadvisor</td><td>monitoring</td><td>cadvisor:8080</td><td>Metriken der Container</td></tr>
+    <tr><td>node-exporter</td><td>monitoring</td><td>node-exporter:9100</td><td>Metriken des Hosts</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="note">Diese Adressen gelten nur innerhalb des Docker-Netzwerks, nicht im Browser. Die Einrichtungsdienste monitoring-init, stalwart-init, paperless-db-setup und immich-db-setup laufen nur einmal beim Start.</p>
 
 <script>
   // Links use the host name this page was opened with, so no address is written into the page.
