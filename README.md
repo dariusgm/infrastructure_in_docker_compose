@@ -43,6 +43,7 @@ The deployment is: clone this repository on the server, install the dependencies
 | `paperless/` | Notes for Paperless-ngx, the document management system, and its services. See `paperless/README.md`. |
 | `dashboard/` | Static start page on port 8080 with links to the web interfaces (Paperless, Immich, Pi-hole, Vaultwarden, Grafana). |
 | `mail/` | Stalwart mail server, LAN only: alerts and family mailboxes. Admin UI and IMAPS. See `mail/README.md`. |
+| `smoke/` | Smoke test that boots the whole stack with throwaway data and checks it, and a hook that runs it before `gh pr create`. See "Smoke test" below. |
 | `monitoring/` | Prometheus (metrics) and Grafana (graphs). Grafana on port 3000. See `monitoring/README.md`. |
 | `vaultwarden/` | Notes for Vaultwarden, the Rust server for the Bitwarden clients (password manager). See `vaultwarden/README.md`. |
 | `immich/` | Notes for Immich, the photo archive (read-only originals, smart search, face recognition). The services are in `compose.yaml`. See `immich/README.md`. |
@@ -78,3 +79,58 @@ Check on the server (as the deploy user, and with sudo for ufw):
 ss -tln | grep -E ':(53|445|3000|3142|8081|8082|8083|8084)\b'   # every listener shows HOST_IP, not 0.0.0.0
 sudo ufw status verbose                                # default deny incoming, allow from ALLOWED_NETWORK
 ```
+
+## Smoke test
+
+`smoke/smoke.py` boots the whole stack on this machine with throwaway data, checks it, and removes it
+again. Run it from the repository root:
+
+```bash
+python3 smoke/smoke.py
+```
+
+What it does:
+
+1. Preflight: Docker, at least 4 GiB of memory and 15 GiB of disk free, and no full stack running.
+2. Writes a temporary `.env` with generated secrets. It binds to `127.0.0.2`, so the ports don't clash
+   with the LAN address of a running stack. A local CA issues the certificates for Vaultwarden and Stalwart.
+3. Starts every service and waits until all of them are healthy.
+4. Does the one-time setup from the READMEs: the Stalwart bootstrap, its certificate and metrics, and the
+   Paperless metrics user.
+5. Checks each endpoint, that every Prometheus target is up, that the exporters deliver data, the Grafana
+   data source, and sends and reads back a mail (`mail/e2e-test.sh`).
+6. Removes the containers and the temporary data, also when a check fails.
+
+Only one stack runs at a time. The smoke test refuses to start while the full stack is running. Set
+`SMOKE_KEEP=1` to keep the smoke stack running for debugging.
+
+It takes roughly 15 to 20 minutes, mostly the first start of Immich, Paperless and Stalwart.
+
+### Pre-PR hook
+
+`smoke/pre_pr_hook.py` runs the smoke test before `gh pr create`. If the full stack is up, the hook
+stops it, runs the smoke test, and starts the full stack again, also when the test fails. A failing
+test blocks the pull request. Set `SMOKE_SKIP=1` to skip the test once.
+
+Register the hook in `.claude/settings.json` (create the file if it does not exist):
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/smoke/pre_pr_hook.py",
+            "timeout": 2400
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+The `timeout` is in seconds. A full run needs up to 40 minutes, so keep it at 2400 or more.
