@@ -14,11 +14,47 @@
   a:hover, a:focus { outline: 2px solid #0a84ff; }
   .name { font-weight: 600; }
   .meta { color: var(--muted); font-size: 0.9rem; margin-top: 4px; }
+  h2 { font-size: 1.1rem; margin: 28px 0 8px; }
+  .table-wrap { overflow-x: auto; border-radius: 10px; background: var(--card); }
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--bg); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; }
+  td:first-child { font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
+  .note { color: var(--muted); font-size: 0.9rem; line-height: 1.5; }
 </style>
 </head>
 <body>
 <h1>Dienste</h1>
 <ul id="list"></ul>
+
+<h2>Portzuordnung</h2>
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th>Dienst</th><th>Host-Port</th><th>Container-Port</th><th>Protokoll</th><th>Zweck</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>apt-cache</td><td>3142</td><td>3142</td><td>TCP</td><td>Ubuntu-Paketcache (apt)</td></tr>
+    <tr><td>url-proxy</td><td>8081</td><td>8081</td><td>TCP</td><td>Generischer URL-Proxy mit Cache</td></tr>
+    <tr><td>pihole</td><td>53</td><td>53</td><td>TCP</td><td>DNS</td></tr>
+    <tr><td>pihole</td><td>53</td><td>53</td><td>UDP</td><td>DNS</td></tr>
+    <tr><td>pihole</td><td>8082</td><td>80</td><td>TCP</td><td>Pi-hole Verwaltung</td></tr>
+    <tr><td>paperless</td><td>8083</td><td>8000</td><td>TCP</td><td>Paperless-ngx Web</td></tr>
+    <tr><td>immich-server</td><td>2283</td><td>2283</td><td>TCP</td><td>Immich Web und API</td></tr>
+    <tr><td>vaultwarden</td><td>8084</td><td>80</td><td>TCP</td><td>Vaultwarden Web</td></tr>
+    <tr><td>grafana</td><td>3000</td><td>3000</td><td>TCP</td><td>Grafana</td></tr>
+    <tr><td>stalwart</td><td>443</td><td>443</td><td>TCP</td><td>Mail-Verwaltung (HTTPS)</td></tr>
+    <tr><td>stalwart</td><td>993</td><td>993</td><td>TCP</td><td>IMAPS (Mail-Abruf)</td></tr>
+    <tr><td>dashboard</td><td>8080</td><td>8080</td><td>TCP</td><td>Diese Startseite</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="note">Host-Port ist der Port auf dem Server (HOST_IP). Die Links oben nutzen den Host-Namen, unter dem diese Seite geöffnet wurde.</p>
+
+<h2>Ohne veröffentlichten Port</h2>
+<p class="note">Diese Dienste laufen nur intern im Docker-Netzwerk und sind von außen nicht erreichbar: paperless-db, paperless-broker, paperless-gotenberg, paperless-tika, backup, immich-machine-learning, immich-db, immich-redis, prometheus, cadvisor, node-exporter, url-proxy-exporter, paperless-db-exporter, paperless-broker-exporter, paperless-app-exporter, immich-db-exporter, immich-redis-exporter, sowie die einmaligen Einrichtungsdienste monitoring-init, stalwart-init, paperless-db-setup und immich-db-setup.</p>
+
 <script>
   // Links use the host name this page was opened with, so no address is written into the page.
   var host = window.location.hostname;
