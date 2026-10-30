@@ -9,7 +9,9 @@ is relayed to the internet: the server does not deliver mail to other domains.
 - **Mail domain:** `home.lan`. The server name is `mail.home.lan`.
 - **Admin UI and account manager:** `https://mail.home.lan/admin` (administrators) and
   `https://mail.home.lan/account` (each user changes their own password). Port 443 of `HOST_IP`.
-- **IMAPS for mail apps:** `mail.home.lan`, port 993, TLS. SMTP (25) is internal only, for Alertmanager.
+- **IMAPS for mail apps:** `mail.home.lan`, port 993, TLS.
+- **Sending (submission):** port 465, implicit TLS, with a login. Alertmanager uses this port with an account
+  of its own. Port 25 is not used for clients: it refuses them, because they are not other mail servers.
 - **Name resolution:** phones and the admin need `mail.home.lan` to resolve. Add it as a local DNS
   record in Pi-hole (Local DNS, DNS records), pointing to `HOST_IP`.
 
@@ -56,6 +58,12 @@ account gets the role `User`. Users change their own password under `/account`.
 docker compose ps stalwart                                                      # healthy
 curl -sk -o /dev/null -w '%{http_code}\n' https://mail.home.lan/healthz/live   # 200
 ```
+
+## End-to-end test
+
+`mail/e2e-test.sh` creates a throwaway account, sends a message over 465, reads it back over JMAP as that
+account, and deletes the account. It prints PASS or FAIL. Run it on the server after any change to the mail
+service.
 
 ## Notes
 
