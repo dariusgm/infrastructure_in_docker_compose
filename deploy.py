@@ -178,8 +178,6 @@ def store_generated(env, output):
 
 
 def cmd_deploy(env):
-    if not (env.get("HOST_PRIVATE_KEY") and env.get("HOST_PUBLIC_KEY")):
-        sys.exit("No SSH key in .env yet. Run: python3 deploy.py keys")
     target = target_of(env)
     deploy_dir = shlex.quote(env["DEPLOY_DIR"])
     repo_url = shlex.quote(env["REPO_URL"])
@@ -187,7 +185,9 @@ def cmd_deploy(env):
     if relax not in ("yes", "no"):
         sys.exit("ROOTLESS_RELAX_APPARMOR must be yes or no")
     with tempfile.TemporaryDirectory() as tmp:
-        key_file = write_private_key(tmp, env)
+        # The key pair in .env is used when present (deploy.py keys). Otherwise the SSH agent or the
+        # default identities of this machine are used.
+        key_file = write_private_key(tmp, env) if env.get("HOST_PRIVATE_KEY") else None
 
         print("==> 1. Code: clone or fast-forward the repository on the host")
         if ssh_capture(target, "command -v git >/dev/null", key_file)[0] != 0:
