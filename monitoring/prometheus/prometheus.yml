@@ -66,3 +66,18 @@ scrape_configs:
       - targets: ["paperless-app-exporter:8081"]
         labels:
           service: paperless
+
+  # Mail server statistics (Stalwart). HTTPS with the local CA; the certificate names mail.home.lan.
+  - job_name: stalwart
+    scheme: https
+    metrics_path: /metrics/prometheus
+    basic_auth:
+      username: prometheus
+      password_file: /etc/prometheus/secrets/stalwart-metrics-password
+    tls_config:
+      ca_file: /etc/prometheus/mail-ca.pem
+      server_name: mail.home.lan
+    static_configs:
+      - targets: ["stalwart:443"]
+        labels:
+          service: stalwart

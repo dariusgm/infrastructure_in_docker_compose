@@ -42,6 +42,7 @@ The deployment is: clone this repository on the server, install the dependencies
 | `pihole/` | Notes for Pi-hole, the network-wide DNS server with ad blocking. See `pihole/README.md`. |
 | `paperless/` | Notes for Paperless-ngx, the document management system, and its services. See `paperless/README.md`. |
 | `dashboard/` | Static start page on port 8080 with links to the web interfaces (Paperless, Immich, Pi-hole, Vaultwarden, Grafana). |
+| `mail/` | Stalwart mail server, LAN only: alerts and family mailboxes. Admin UI and IMAPS. See `mail/README.md`. |
 | `monitoring/` | Prometheus (metrics) and Grafana (graphs). Grafana on port 3000. See `monitoring/README.md`. |
 | `vaultwarden/` | Notes for Vaultwarden, the Rust server for the Bitwarden clients (password manager). See `vaultwarden/README.md`. |
 | `immich/` | Notes for Immich, the photo archive (read-only originals, smart search, face recognition). The services are in `compose.yaml`. See `immich/README.md`. |

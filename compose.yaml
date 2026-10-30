@@ -389,10 +389,13 @@ services:
     command:
       - sh
       - -c
-      - chown -R 65534:65534 /prometheus && chown -R 472:0 /grafana
+      - chown -R 65534:65534 /prometheus && chown -R 472:0 /grafana && mkdir -p /secrets && printf "%s" "$$STALWART_METRICS_PASSWORD" > /secrets/stalwart-metrics-password && chmod 644 /secrets/stalwart-metrics-password
+    environment:
+      STALWART_METRICS_PASSWORD: ${STALWART_METRICS_PASSWORD:?Set STALWART_METRICS_PASSWORD in .env}
     volumes:
       - ${DATA_DIR}/monitoring/prometheus:/prometheus
       - ${DATA_DIR}/monitoring/grafana:/grafana
+      - ${DATA_DIR}/monitoring/secrets:/secrets
 
   # Time series database. Scrapes the targets listed in monitoring/prometheus/prometheus.yml.
   prometheus:
@@ -413,6 +416,8 @@ services:
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ${DATA_DIR}/monitoring/prometheus:/prometheus
+      - ${DATA_DIR}/monitoring/secrets:/etc/prometheus/secrets:ro
+      - ${DATA_DIR}/mail/tls/ca.pem:/etc/prometheus/mail-ca.pem:ro
     healthcheck:
       test: ["CMD", "promtool", "check", "healthy", "--url", "http://localhost:9090"]
       interval: 30s
@@ -477,6 +482,45 @@ services:
     volumes:
       - ${DATA_DIR}/vaultwarden:/data
       - ${DATA_DIR}/vaultwarden-tls:/tls:ro
+
+  # One-shot: gives the mail data and configuration directories to the user Stalwart runs as (UID 2000).
+  stalwart-init:
+    image: docker.io/library/busybox:1.37.0
+    restart: "no"
+    logging: *logging
+    command:
+      - sh
+      - -c
+      - chown -R 2000:2000 /etc/stalwart-data /var/lib/stalwart-data && chown 2000:2000 /tls/privkey.pem && chmod 600 /tls/privkey.pem
+    volumes:
+      - ${DATA_DIR}/mail/etc:/etc/stalwart-data
+      - ${DATA_DIR}/mail/data:/var/lib/stalwart-data
+      - ${DATA_DIR}/mail/tls:/tls
+
+  # --- Mail server: Stalwart, LAN only (see mail/README.md) ---
+  # Alerts and family mailboxes. Nothing leaves the LAN: no relay route to the internet is set up.
+  # SMTP (25) is reached by Alertmanager on the monitoring network and is not published. IMAPS (993)
+  # is published on HOST_IP for mail apps. The web admin and account manager are HTTPS on 443 of
+  # HOST_IP.
+  stalwart:
+    image: docker.io/stalwartlabs/stalwart:v1.0.1
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      stalwart-init:
+        condition: service_completed_successfully
+    networks:
+      - default
+      - monitoring
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "${HOST_IP}:443:443"
+      - "${HOST_IP}:993:993"
+    volumes:
+      - ${DATA_DIR}/mail/etc:/etc/stalwart
+      - ${DATA_DIR}/mail/data:/var/lib/stalwart
+      - ${DATA_DIR}/mail/tls:/etc/stalwart/tls:ro
 
   # --- Metrics exporters: read the services and expose their metrics to Prometheus (see monitoring/README.md) ---
   # Each exporter joins the network of the service it reads and the monitoring network. Prometheus
