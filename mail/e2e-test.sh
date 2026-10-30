@@ -2,11 +2,14 @@
 # End-to-end test of the mail server: create a throwaway account over the JMAP API, submit a message
 # over SMTP (port 465, implicit TLS, authenticated as the administrator), read it back over JMAP as
 # the new account, and delete the account again. Exit status 0 means every step passed.
-# Run from the repository root on the server: mail/e2e-test.sh
+# Run from the repository root: mail/e2e-test.sh. ENV_FILE (default .env) and E2E_NETWORK
+# (default infrastructure_monitoring) select another stack, as the smoke test does.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
-env_value() { grep "^$1=" .env | head -n1 | cut -d= -f2-; }
+ENV_FILE=${ENV_FILE:-.env}
+NETWORK=${E2E_NETWORK:-infrastructure_monitoring}
+env_value() { grep "^$1=" "$ENV_FILE" | head -n1 | cut -d= -f2-; }
 ADMIN_USER=$(env_value MAIL_ADMIN_USER)
 ADMIN_PW=$(env_value MAIL_ADMIN_PASSWORD)
 HOST_IP=$(env_value HOST_IP)
@@ -47,7 +50,7 @@ echo "   created account id $ACCOUNT_ID"
 echo "2. send a message to $ADDRESS over SMTP (465, implicit TLS, authenticated)"
 printf 'From: %s\r\nTo: %s\r\nSubject: %s\r\nDate: %s\r\nMessage-ID: <%s@home.lan>\r\n\r\nE2E body %s\r\n' \
   "$ADMIN_USER" "$ADDRESS" "$TOKEN" "$(date -R)" "$TOKEN" "$TOKEN" \
-  | docker run --rm -i --network infrastructure_monitoring -v "$CA:/ca.pem:ro" docker.io/curlimages/curl:latest \
+  | docker run --rm -i --network "$NETWORK" -v "$CA:/ca.pem:ro" docker.io/curlimages/curl:latest \
       --silent --show-error --cacert /ca.pem --connect-to "$MAIL_HOST:465:stalwart:465" \
       --url "smtps://$MAIL_HOST:465" --user "$ADMIN_USER:$ADMIN_PW" \
       --mail-from "$ADMIN_USER" --mail-rcpt "$ADDRESS" -T -
