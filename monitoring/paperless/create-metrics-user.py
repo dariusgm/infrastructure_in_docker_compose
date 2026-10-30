@@ -2,6 +2,8 @@
 # API token as TOKEN=<value>. Run it once, or again to print the token of the existing user:
 #   docker compose -f compose.yaml exec -T paperless python3 /usr/src/paperless/src/manage.py shell < monitoring/paperless/create-metrics-user.py
 # The user gets only the view_* permissions, so it can read the statistics and cannot change anything.
+import os
+
 from django.contrib.auth.models import Permission, User
 from rest_framework.authtoken.models import Token
 
@@ -16,5 +18,12 @@ user.is_superuser = False
 user.save()
 user.user_permissions.set(Permission.objects.filter(codename__startswith="view_"))
 
-token, _ = Token.objects.get_or_create(user=user)
+# A token given in the environment (PAPERLESS_METRICS_TOKEN, from .env) is the one used. Any other token of
+# this user is removed, so the value in .env is the only valid one.
+given = os.environ.get("PAPERLESS_METRICS_TOKEN", "")
+if given:
+    Token.objects.filter(user=user).exclude(key=given).delete()
+    token, _ = Token.objects.get_or_create(key=given, defaults={"user": user})
+else:
+    token, _ = Token.objects.get_or_create(user=user)
 print("TOKEN=" + token.key)

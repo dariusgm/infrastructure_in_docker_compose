@@ -9,6 +9,8 @@ All configuration lives in .env (git-ignored).
 """
 
 import base64
+import hashlib
+import json
 import os
 import shlex
 import subprocess
@@ -146,58 +148,94 @@ def host_env_content():
     return ("\n".join(kept) + "\n").encode()
 
 
+def ssh_capture(target, command, key_file, stdin=None):
+    """Runs a command on the host and returns (exit code, stdout). Lines are also shown as they arrive."""
+    proc = subprocess.Popen([*ssh_command(key_file), target, command], stdin=subprocess.PIPE if stdin else None,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    if stdin:
+        proc.stdin.write(stdin.decode())
+        proc.stdin.close()
+    lines = []
+    for line in proc.stdout:
+        lines.append(line.rstrip("\n"))
+        print("   " + line.rstrip("\n"), flush=True)
+    return proc.wait(), "\n".join(lines)
+
+
+def remote_python(target, deploy_dir, key_file, step):
+    """Runs one step script on the host, with the .env of the deploy directory."""
+    return ssh_capture(target, f"cd {deploy_dir} && python3 server/steps/{step}.py .env", key_file)
+
+
+def store_generated(env, output):
+    """Writes the values a step generated (RESULT lines) into the local .env, so it is the source of truth."""
+    for line in output.splitlines():
+        if line.startswith("RESULT "):
+            for key, value in json.loads(line[7:]).items():
+                write_env_value(key, value)
+                env[key] = value
+                print(f"   stored {key} in the local .env", flush=True)
+
+
 def cmd_deploy(env):
     if not (env.get("HOST_PRIVATE_KEY") and env.get("HOST_PUBLIC_KEY")):
         sys.exit("No SSH key in .env yet. Run: python3 deploy.py keys")
     target = target_of(env)
     deploy_dir = shlex.quote(env["DEPLOY_DIR"])
     repo_url = shlex.quote(env["REPO_URL"])
+    relax = env.get("ROOTLESS_RELAX_APPARMOR", "no")
+    if relax not in ("yes", "no"):
+        sys.exit("ROOTLESS_RELAX_APPARMOR must be yes or no")
     with tempfile.TemporaryDirectory() as tmp:
         key_file = write_private_key(tmp, env)
 
-        print("==> Installing git on the host (needed to clone)")
-        ssh_sudo(env, key_file, "sh -c 'apt-get update && apt-get install -y --no-install-recommends git ca-certificates'")
-
-        print("==> Cloning or updating the repository on the host")
-        ssh_run(
+        print("==> 1. Code: clone or fast-forward the repository on the host")
+        if ssh_capture(target, "command -v git >/dev/null", key_file)[0] != 0:
+            ssh_sudo(env, key_file, "sh -c 'apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates'")
+        code, out = ssh_capture(
             target,
-            f"if [ -d {deploy_dir}/.git ]; then git -C {deploy_dir} pull --ff-only; "
-            f"else git clone {repo_url} {deploy_dir}; fi",
+            f"if [ -d {deploy_dir}/.git ]; then before=$(git -C {deploy_dir} rev-parse HEAD); "
+            f"git -C {deploy_dir} pull --ff-only >/dev/null; "
+            f"echo \"code: $before -> $(git -C {deploy_dir} rev-parse HEAD)\"; "
+            f"else git clone -q {repo_url} {deploy_dir} && echo 'code: cloned'; fi",
             key_file,
         )
+        if code != 0:
+            sys.exit("could not fetch the code on the host")
 
-        print("==> Uploading .env")
-        ssh_run(target, f"cat > {deploy_dir}/.env && chmod 600 {deploy_dir}/.env", key_file, stdin=host_env_content())
-
-        relax = env.get("ROOTLESS_RELAX_APPARMOR", "no")
-        if relax not in ("yes", "no"):
-            sys.exit("ROOTLESS_RELAX_APPARMOR must be yes or no")
-
-        print("==> Preparing the host (idempotent, as root)")
-        ssh_sudo(
-            env,
+        print("==> 2. Configuration: upload .env when it differs from the host copy")
+        local_copy = host_env_content()
+        local_hash = hashlib.sha256(local_copy).hexdigest()
+        code, out = ssh_capture(
+            target,
+            f"sha256sum {deploy_dir}/.env 2>/dev/null | cut -d' ' -f1 || true",
             key_file,
-            f"bash {deploy_dir}/server/bootstrap.sh {shlex.quote(env['HOST_USERNAME'])} "
-            f"{shlex.quote(env['ALLOWED_NETWORK'])} {shlex.quote(env['DATA_DIR'])} {relax}",
         )
+        if out.strip().splitlines()[-1:] == [local_hash]:
+            print("   .env on the host is up to date", flush=True)
+        else:
+            ssh_capture(target, f"cat > {deploy_dir}/.env && chmod 600 {deploy_dir}/.env", key_file, stdin=local_copy)
+            print("   .env uploaded", flush=True)
 
-        print("==> Mounting the consume share from the NAS (as root)")
-        ssh_sudo(
-            env,
-            key_file,
-            f"bash {deploy_dir}/server/consume-mount.sh {deploy_dir}/.env {shlex.quote(env['HOST_USERNAME'])}",
-        )
+        print("==> 3. Host: checks Docker, openssl, git, ufw, data directory and NAS mount", flush=True)
+        code, _ = remote_python(target, deploy_dir, key_file, "host_check")
+        if code != 0:
+            print("   host not ready: running the root preparation and the NAS mounts", flush=True)
+            ssh_sudo(env, key_file, f"bash {deploy_dir}/server/bootstrap.sh {shlex.quote(env['HOST_USERNAME'])} "
+                                    f"{shlex.quote(env['ALLOWED_NETWORK'])} {shlex.quote(env['DATA_DIR'])} {relax}")
+            ssh_sudo(env, key_file, f"bash {deploy_dir}/server/consume-mount.sh {deploy_dir}/.env {shlex.quote(env['HOST_USERNAME'])}")
+            ssh_sudo(env, key_file, f"bash {deploy_dir}/server/immich-originals-mount.sh {deploy_dir}/.env {shlex.quote(env['HOST_USERNAME'])}")
+        ssh_capture(target, f"bash {deploy_dir}/server/up.sh --no-stack", key_file)
+        code, _ = remote_python(target, deploy_dir, key_file, "host_check")
+        if code != 0:
+            sys.exit("the host is still not ready after the root preparation")
 
-        print("==> Mounting the Immich originals from the NAS (as root, read-only)")
-        ssh_sudo(
-            env,
-            key_file,
-            f"bash {deploy_dir}/server/immich-originals-mount.sh {deploy_dir}/.env {shlex.quote(env['HOST_USERNAME'])}",
-        )
-
-        print("==> Starting rootless Docker and the stack (as the deploy user)")
-        ssh_run(target, f"bash {deploy_dir}/server/up.sh", key_file)
-    print("Deployment finished.")
+        print("==> 4. Lifecycle steps (each checks first, changes only what is missing)", flush=True)
+        code, out = ssh_capture(target, f"cd {deploy_dir} && python3 server/steps/run.py .env", key_file)
+        store_generated(env, out)
+        if code != 0:
+            sys.exit("a lifecycle step failed, see the output above; fix it and run deploy.py again")
+    print("Deployment finished. The stack was launched by the stack step.")
 
 
 def main():

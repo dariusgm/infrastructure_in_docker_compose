@@ -30,7 +30,7 @@ export DEBIAN_FRONTEND=noninteractive
 echo "==> Base packages"
 apt-get update -qq
 apt-get install -y -qq --no-install-recommends \
-  ca-certificates curl git gnupg ufw \
+  ca-certificates curl git gnupg openssl ufw \
   uidmap rootlesskit slirp4netns dbus-user-session
 
 echo "==> Remove Ubuntu's Docker packages (replaced by Docker's official packages)"

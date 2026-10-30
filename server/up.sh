@@ -2,7 +2,8 @@
 # Idempotent stack start. Runs as the deploy user, never as root.
 # Installs and starts the rootless Docker daemon if needed, then starts the compose stack.
 #
-# Usage: bash server/up.sh
+# Usage: bash server/up.sh [--no-stack]
+#   --no-stack  start only the rootless Docker daemon; the stack is started by server/steps/run.py
 set -euo pipefail
 
 if [ "$(id -u)" -eq 0 ]; then
@@ -37,6 +38,11 @@ for _ in $(seq 30); do
   sleep 1
 done
 docker info >/dev/null
+
+if [ "${1:-}" = "--no-stack" ]; then
+  echo "Rootless Docker is running; stack not started (--no-stack)"
+  exit 0
+fi
 
 echo "==> Stack"
 cd "$PROJECT_DIR"
