@@ -87,17 +87,17 @@
   // Links use the host name this page was opened with, so no address is written into the page.
   var host = window.location.hostname;
   var services = [
-    { name: "Paperless", port: 8083, path: "/", note: "Dokumentenverwaltung" },
-    { name: "Immich", port: 2283, path: "/", note: "Fotoarchiv" },
-    { name: "Pi-hole", port: 8082, path: "/admin", note: "DNS und Werbeblocker" },
-    { name: "Vaultwarden", port: 8084, path: "/", note: "Passwortverwaltung" },
-    { name: "Grafana", port: 3000, path: "/", note: "Überwachung" }
+    { name: "Paperless", scheme: "http", port: 8083, path: "/", note: "Dokumentenverwaltung" },
+    { name: "Immich", scheme: "http", port: 2283, path: "/", note: "Fotoarchiv" },
+    { name: "Pi-hole", scheme: "http", port: 8082, path: "/admin", note: "DNS und Werbeblocker" },
+    { name: "Vaultwarden", scheme: "https", port: 8084, path: "/", note: "Passwortverwaltung" },
+    { name: "Grafana", scheme: "http", port: 3000, path: "/", note: "Überwachung" }
   ];
   var list = document.getElementById("list");
   services.forEach(function (s) {
     var li = document.createElement("li");
     var a = document.createElement("a");
-    a.href = "http://" + host + ":" + s.port + s.path;
+    a.href = s.scheme + "://" + host + ":" + s.port + s.path;
     var name = document.createElement("div");
     name.className = "name";
     name.textContent = s.name;
