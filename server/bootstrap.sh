@@ -106,6 +106,29 @@ if [ "$(sysctl -n net.ipv4.ip_unprivileged_port_start)" -gt 53 ]; then
   sysctl -q -p "$PORT_SYSCTL"
 fi
 
+echo "==> Unattended kernel and security updates, reboot at 02:00"
+cat > /etc/apt/apt.conf.d/52infra-unattended-kernel <<'CONF'
+// Managed by server/bootstrap.sh: installs security and kernel updates unattended and reboots at night.
+Unattended-Upgrade::Allowed-Origins {
+	"${distro_id}:${distro_codename}-updates";
+};
+Unattended-Upgrade::Automatic-Reboot "true";
+Unattended-Upgrade::Automatic-Reboot-Time "02:00";
+Unattended-Upgrade::Automatic-Reboot-WithUsers "true";
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+Unattended-Upgrade::Remove-Unused-Dependencies "true";
+CONF
+# The daily upgrade runs at 01:00 instead of the default 06:00, so a reboot at 02:00 follows it the same night.
+install -d /etc/systemd/system/apt-daily-upgrade.timer.d
+cat > /etc/systemd/system/apt-daily-upgrade.timer.d/override.conf <<'T'
+[Timer]
+OnCalendar=
+OnCalendar=*-*-* 01:00
+RandomizedDelaySec=0
+T
+systemctl daemon-reload
+systemctl restart apt-daily-upgrade.timer
+
 echo "==> Retry of the network shares at boot (CIFS mounts can run before the host has a route)"
 RETRY_UNIT=/etc/systemd/system/infrastructure-cifs-mount.service
 cat > "$RETRY_UNIT.tmp" <<'UNIT'
