@@ -32,6 +32,21 @@ fi
 if [ ! -f "$UNIT" ]; then
   "$SETUP_TOOL" install
 fi
+# The daemon starts containers with a restart policy as soon as it is up. Their port bindings to
+# HOST_IP fail while that address is not configured yet (seen after a reboot), so the daemon waits for it.
+HOST_IP_VALUE="$(grep -m1 '^HOST_IP=' "$PROJECT_DIR/.env" | cut -d= -f2- || true)"
+if [ -n "$HOST_IP_VALUE" ]; then
+  DROPIN_DIR="$HOME/.config/systemd/user/docker.service.d"
+  mkdir -p "$DROPIN_DIR"
+  cat > "$DROPIN_DIR/wait-host-ip.conf" <<EOF
+[Service]
+ExecStartPre=/bin/sh -c 'for i in \$(seq 120); do /usr/sbin/ip -4 addr show | grep -q "inet ${HOST_IP_VALUE}/" && exit 0; sleep 1; done; echo "HOST_IP ${HOST_IP_VALUE} is not configured" >&2; exit 1'
+EOF
+  cat >> "$DROPIN_DIR/wait-host-ip.conf" <<EOF
+ExecStartPre=-${PROJECT_DIR}/server/wait-mounts.sh
+EOF
+  systemctl --user daemon-reload
+fi
 systemctl --user enable --now docker.service
 for _ in $(seq 30); do
   docker info >/dev/null 2>&1 && break

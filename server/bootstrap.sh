@@ -106,6 +106,25 @@ if [ "$(sysctl -n net.ipv4.ip_unprivileged_port_start)" -gt 53 ]; then
   sysctl -q -p "$PORT_SYSCTL"
 fi
 
+echo "==> Retry of the network shares at boot (CIFS mounts can run before the host has a route)"
+RETRY_UNIT=/etc/systemd/system/infrastructure-cifs-mount.service
+cat > "$RETRY_UNIT.tmp" <<'UNIT'
+[Unit]
+Description=Mount the network shares from fstab once the host has a default route
+After=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/sh -c 'for i in $(seq 60); do ip route show default | grep -q . && break; sleep 2; done; sleep 5; mount -a -O _netdev || true; systemctl reset-failed "mnt-*.mount" 2>/dev/null || true'
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+mv "$RETRY_UNIT.tmp" "$RETRY_UNIT"
+systemctl daemon-reload
+systemctl enable infrastructure-cifs-mount.service >/dev/null
+
 echo "==> Lingering for $RUN_USER (user services run without a login session)"
 if [ "$(loginctl show-user "$RUN_USER" -p Linger --value 2>/dev/null || true)" != yes ]; then
   loginctl enable-linger "$RUN_USER"

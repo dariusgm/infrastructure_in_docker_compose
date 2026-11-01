@@ -49,6 +49,7 @@ The deployment is: clone this repository on the server, install the dependencies
 | `immich/` | Notes for Immich, the photo archive (read-only originals, smart search, face recognition). The services are in `compose.yaml`. See `immich/README.md`. |
 | `backup/` | Image and notes for the daily backup of the databases and files. See `backup/README.md`. |
 | `server/consume-mount.sh` | Mounts the consume share of the NAS on the host at `/mnt/paperless-consume`. Run by `deploy.py`. |
+| `server/wait-mounts.sh` | Waits until the NAS shares are mounted. Run by the Docker drop-in before the daemon starts. See "Boot order". |
 
 ## Data
 
@@ -78,6 +79,36 @@ Check on the server (as the deploy user, and with sudo for ufw):
 ```bash
 ss -tln | grep -E ':(53|445|3000|3142|8081|8082|8083|8084)\b'   # every listener shows HOST_IP, not 0.0.0.0
 sudo ufw status verbose                                # default deny incoming, allow from ALLOWED_NETWORK
+```
+
+## Boot order
+
+A reboot starts several things at once, and two of them need the LAN address and the NAS first.
+Three parts keep the order right:
+
+- **Docker waits for `HOST_IP`.** `server/up.sh` writes a drop-in for the rootless `docker.service`.
+  Before the daemon starts, it waits up to 120 seconds until `HOST_IP` is configured on a local
+  interface. Containers with a restart policy start with the daemon, and their port bindings to
+  `HOST_IP` fail while the address is missing. If the address never appears, the daemon does not
+  start; the reason is in `journalctl --user -u docker`.
+- **Docker waits for the NAS shares.** The same drop-in then runs `server/wait-mounts.sh`. It waits
+  up to 120 seconds until every `cifs` entry in `/etc/fstab` is mounted, then lets Docker start
+  anyway. Containers with bind mounts into the shares (Immich originals, Paperless consume folder)
+  therefore do not start on empty folders.
+- **The shares are retried at boot.** systemd does not retry a CIFS mount that failed at boot.
+  `server/bootstrap.sh` installs `infrastructure-cifs-mount.service`. It waits up to two minutes for
+  a default route, then runs `mount -a -O _netdev` and clears the failed mount units.
+
+The `_netdev` and `nofail` options in `server/consume-mount.sh` and `server/immich-originals-mount.sh`
+stay: a missing NAS must not block the boot. `systemd-networkd-wait-online` is not relied on here,
+because it is skipped at boot on this server.
+
+Check after a reboot (as the deploy user):
+
+```bash
+systemctl --user status docker.service   # active; the drop-in is listed under "Drop-In"
+findmnt -t cifs -o TARGET,FSTYPE         # every share from /etc/fstab is listed
+docker ps --format '{{.Names}} {{.Status}}'
 ```
 
 ## Smoke test
