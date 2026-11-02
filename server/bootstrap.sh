@@ -129,6 +129,36 @@ T
 systemctl daemon-reload
 systemctl restart apt-daily-upgrade.timer
 
+echo "==> Stopgap for CVE-2026-98432 until a fixed kernel is installed: drop IPv4 TCP packets with IP options"
+install -d -m 0755 /etc/infrastructure
+cat > /etc/infrastructure/cve-2026-98432.nft <<'NFT'
+table ip cve_2026_98432 {
+	chain input {
+		type filter hook input priority -150; policy accept;
+		ip hdrlength > 5 meta l4proto tcp counter drop
+	}
+}
+NFT
+cat > /etc/systemd/system/infrastructure-cve-2026-98432.service <<'UNIT'
+[Unit]
+Description=Load the stopgap ruleset for CVE-2026-98432
+After=network-pre.target
+Wants=network-pre.target
+Before=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStartPre=-/usr/sbin/nft delete table ip cve_2026_98432
+ExecStart=/usr/sbin/nft -f /etc/infrastructure/cve-2026-98432.nft
+ExecStop=/usr/sbin/nft delete table ip cve_2026_98432
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable infrastructure-cve-2026-98432.service >/dev/null
+
 echo "==> Retry of the network shares at boot (CIFS mounts can run before the host has a route)"
 RETRY_UNIT=/etc/systemd/system/infrastructure-cifs-mount.service
 cat > "$RETRY_UNIT.tmp" <<'UNIT'
