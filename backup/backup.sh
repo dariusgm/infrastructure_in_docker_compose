@@ -7,6 +7,7 @@
 #   /backup/paperless/files/<stamp>/                    Paperless data and media (hardlinked)
 #   /backup/pihole/<stamp>-gravity.db                   Pi-hole databases (SQLite)
 #   /backup/pihole/<stamp>-pihole-FTL.db
+#   /backup/mail/<stamp>/                               Stalwart config (etc), TLS (tls) and store (data)
 #
 # Order within a run: database first, files second. A document that arrives in between then
 # exists as a file without a database row, which is harmless. The reverse order could leave a
@@ -57,6 +58,25 @@ snapshot_files() {
     { rm -rf "$new.partial"; return 1; }
 }
 
+snapshot_mail() {
+  local root="$BACKUP_DIR/mail"
+  local new="$root/$STAMP"
+  local -a snapshots=("$root"/[0-9]*Z)
+  local -a link=()
+  # Same scheme as the paperless files: unchanged files are hardlinks to the previous snapshot.
+  # An empty store (no mail yet) gives a snapshot with empty data/ and the config and TLS files.
+  if [ "${#snapshots[@]}" -gt 0 ]; then
+    link=(--link-dest="${snapshots[-1]}")
+  fi
+  mkdir -p "$root"
+  # Stalwart writes its store (data/, RocksDB) while it runs. This copy is crash-consistent,
+  # not a stopped-server copy. Before the mailbox holds real mail, stop Stalwart for the copy
+  # (see backup/README.md).
+  rsync -a --delete "${link[@]}" /source/mail/ "$new.partial/" &&
+    mv "$new.partial" "$new" ||
+    { rm -rf "$new.partial"; return 1; }
+}
+
 backup_pihole() {
   local dir="$BACKUP_DIR/pihole"
   local db tmp
@@ -87,6 +107,7 @@ prune_all() {
   prune "$BACKUP_DIR"/paperless/files/[0-9]*Z
   prune "$BACKUP_DIR"/pihole/*-gravity.db
   prune "$BACKUP_DIR"/pihole/*-pihole-FTL.db
+  prune "$BACKUP_DIR"/mail/[0-9]*Z
 }
 
 run_once() {
@@ -97,6 +118,7 @@ run_once() {
   dump_database || { log "ERROR: database dump failed"; failed=1; }
   snapshot_files || { log "ERROR: file snapshot failed"; failed=1; }
   backup_pihole || { log "ERROR: Pi-hole database backup failed"; failed=1; }
+  snapshot_mail || { log "ERROR: mail snapshot failed"; failed=1; }
 
   # Old copies are removed only after a run that completed, so a failing run never deletes
   # the last good backups.

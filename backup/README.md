@@ -10,11 +10,16 @@ once a day (`BACKUP_INTERVAL_SECONDS`, default 86400) and once when it starts.
 | Paperless PostgreSQL database | `pg_dump` in custom format, checked with `pg_restore --list` | `${DATA_DIR}/backup/paperless/database/paperless-<stamp>.dump` |
 | Paperless files (documents, thumbnails, archive, index, settings) | `rsync` snapshot. Unchanged files are hardlinks, so every snapshot is complete but takes space only for changes | `${DATA_DIR}/backup/paperless/files/<stamp>/` (subfolders `data/` and `media/`) |
 | Pi-hole databases (`gravity.db`, `pihole-FTL.db`) | SQLite online backup, consistent while Pi-hole runs | `${DATA_DIR}/backup/pihole/<stamp>-gravity.db`, `<stamp>-pihole-FTL.db` |
+| Mail server (Stalwart): config (`etc`), TLS (`tls`), store (`data`) | `rsync` snapshot, hardlinks like the paperless files. The store is RocksDB and is copied while Stalwart runs (crash-consistent). An empty store gives an empty `data/` | `${DATA_DIR}/backup/mail/<stamp>/` (subfolders `etc/`, `tls/`, `data/`) |
 
 Not backed up, on purpose:
 
 - The PostgreSQL data files and the Valkey queue. Copying live database files is unsafe, so the
   dump is the backup. The queue holds only pending tasks.
+- Mail data while it is not empty. The copy of the Stalwart store is taken while the server runs. The
+  copy is consistent enough while the mailbox is empty, which is the case now. Once real mail
+  arrives, add a stop-copy-start step (stop `stalwart`, run the snapshot, start `stalwart`) before
+  relying on it, and check the restore.
 - `.env`. It holds the secrets and lives in the repository checkout on the server, not in the
   data directory. Keep a copy somewhere safe, outside this server.
 

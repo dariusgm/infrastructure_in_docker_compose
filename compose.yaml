@@ -86,7 +86,7 @@ services:
 
   # Web UI, API, consumer and scheduler of Paperless-ngx.
   paperless:
-    image: ghcr.io/paperless-ngx/paperless-ngx:3.3.4
+    image: ghcr.io/paperless-ngx/paperless-ngx:3.4.2
     restart: unless-stopped
     logging: *logging
     depends_on:
@@ -237,6 +237,8 @@ services:
       - ${DATA_DIR}/paperless/media:/source/paperless/media:ro
       # Read-write: SQLite may need to write its -wal and -shm files while it reads.
       - ${DATA_DIR}/pihole/etc-pihole:/source/pihole
+      # Stalwart: config (etc), TLS (tls) and store (data). Read-only, rsync only reads.
+      - ${DATA_DIR}/mail:/source/mail:ro
     healthcheck:
       # Fails when the last successful backup is older than 48 hours.
       test: ["CMD-SHELL", "test -n \"$(find /backup/status/last-success -mmin -2880 2>/dev/null)\""]
