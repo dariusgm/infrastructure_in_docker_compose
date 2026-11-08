@@ -12,30 +12,33 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       ca-certificates git cmake build-essential ninja-build \
-      libvulkan-dev glslc libcurl4-openssl-dev \
+      libvulkan-dev glslc spirv-headers libssl-dev \
  && rm -rf /var/lib/apt/lists/*
 
 RUN git clone --depth 1 --branch "${LLAMA_CPP_TAG}" https://github.com/ggml-org/llama.cpp.git /src/llama.cpp
 
 WORKDIR /src/llama.cpp
+# Same flags as the native build in llama-cpp/README.md. GGML_BACKEND_DL=ON builds the backends
+# (Vulkan, CPU) as shared libraries that llama-server loads from its own directory at start. With
+# static backends the Vulkan device is never registered.
 # GGML_NATIVE=OFF: the binary must not depend on the CPU of the build machine. AVX2 and FMA
-# cover every Ryzen and most Intel CPUs of the last ten years. Vulkan is the GPU backend.
+# cover every Ryzen and most Intel CPUs of the last ten years.
 RUN cmake -S . -B build -G Ninja \
       -DCMAKE_BUILD_TYPE=Release \
+      -DBUILD_SHARED_LIBS=ON \
+      -DGGML_BACKEND_DL=ON \
       -DGGML_VULKAN=ON \
       -DGGML_NATIVE=OFF \
       -DGGML_AVX2=ON \
       -DGGML_FMA=ON \
       -DGGML_F16C=ON \
-      -DLLAMA_CURL=ON \
       -DLLAMA_BUILD_TESTS=OFF \
       -DLLAMA_BUILD_EXAMPLES=OFF \
  && cmake --build build --target llama-server -j"$(nproc)" \
- && mkdir -p /opt/llama/bin /opt/llama/lib \
+ && mkdir -p /opt/llama/bin \
  && cp build/bin/llama-server /opt/llama/bin/ \
- && find build -name '*.so*' -exec cp -P {} /opt/llama/lib/ \; \
- && ldd /opt/llama/bin/llama-server | awk '/=> \//{print $3}' | sort -u | xargs -I{} cp -L {} /opt/llama/lib/ \
- && ls /opt/llama/lib
+ && cp -P build/bin/*.so* /opt/llama/bin/ \
+ && ls /opt/llama/bin
 
 FROM ubuntu:24.04
 
@@ -45,13 +48,14 @@ ENV DEBIAN_FRONTEND=noninteractive
 # software Vulkan device), which VK_ICD_FILENAMES below keeps out of the loader on purpose.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-      libvulkan1 mesa-vulkan-drivers libgomp1 libcurl4t64 ca-certificates curl \
+      libvulkan1 mesa-vulkan-drivers libgomp1 libssl3t64 ca-certificates curl \
  && rm -rf /var/lib/apt/lists/* \
  && useradd --uid 10001 --create-home --shell /usr/sbin/nologin llama
 
-COPY --from=build /opt/llama /opt/llama
+# The binary and its shared libraries live in one directory: llama-server finds the backends there.
+COPY --from=build /opt/llama/bin /opt/llama/bin
 
-ENV LD_LIBRARY_PATH=/opt/llama/lib \
+ENV LD_LIBRARY_PATH=/opt/llama/bin \
     VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.x86_64.json
 
 USER 10001:10001

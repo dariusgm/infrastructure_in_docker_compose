@@ -77,9 +77,19 @@ exposing them further.
 
 Models are cached in `~/.cache/huggingface/hub`.
 
-## Docker (untested draft)
+## Docker (tested, CPU only)
 
-`Dockerfile` builds the same llama-server with Vulkan in an image. It has not been built or run yet.
-Known open points: the `ldd` copy step may copy system libraries that should stay in the base image,
-and the `GGML_BACKEND_DL` settings in the Dockerfile must match the native build above. Rootless Docker
-access to `/dev/dri` is also untested.
+`Dockerfile` builds llama-server with Vulkan in an image and matches the native build flags.
+
+- The image builds. The embedding server runs on CPU and returns 1024-dimensional vectors.
+- The Vulkan device is not reachable under rootless Docker. Inside the container, `/dev/dri/renderD128`
+  appears as `nobody:nogroup`, and the container user cannot open it. Rootless Docker maps only the
+  user's own UID and subordinate IDs, so the host's `render` group (GID 991) cannot be added with
+  `--group-add`. `--device /dev/kfd` is not needed for Vulkan.
+- Making the device world-readable would work, but it lets every local user open the GPU. Not done.
+- Options: run the OCR server natively (works now, with the GPU), run the embedding server in the
+  container (CPU, works), or switch this service to rootful Docker (changes the host setup).
+
+Model cache: a named volume chowned to UID 10001 (`llama-hf-cache`, mounted at
+`/home/llama/.cache/huggingface`). A bind mount owned by the host user is not writable from the
+container.
