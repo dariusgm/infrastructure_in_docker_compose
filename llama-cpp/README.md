@@ -49,6 +49,19 @@ cmake --build build --target llama-server -j"$(nproc)"
 
 ## Run
 
+`serve.sh` starts one server with the settings below:
+
+```bash
+llama-cpp/serve.sh embeddings   # port $BGE_PORT, default 8090
+llama-cpp/serve.sh ocr          # port $LLAMA_OCR_PORT, default 8091
+```
+
+Extra arguments go to `llama-server`, for example `llama-cpp/serve.sh ocr --api-key "$KEY"`. The
+binary comes from `$LLAMA_BIN`, default `~/llama.cpp/build/bin/llama-server`. The `ocr` role warns if
+the shell is not in the `render` group, because then the GPU is not used.
+
+The commands the script runs are:
+
 Embeddings, on CPU as on the workstation:
 
 ```bash
