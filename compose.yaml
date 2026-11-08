@@ -680,6 +680,97 @@ services:
       # Empty until the metrics user exists. Then the exporter reports 401 instead of data.
       PAPERLESS_AUTH_TOKEN: ${PAPERLESS_METRICS_TOKEN:-}
 
+  # Laya, a local decision model (Apache-2.0, https://github.com/NandhaKishorM/laya), used as the judge
+  # of fleetify through the Jev-compatible /v1/systemone API (see laya/README.md). It publishes no port;
+  # laya-metrics is the only client. The image is built from the pinned release tag, not a branch.
+  # Limits are set because every container shares this host: one judge at a time, bounded memory and CPU.
+  # Runs once: hands the model directory to the UID the Laya image runs as (10001). Under rootless Docker
+  # the deploy user cannot write to it otherwise. Same pattern as monitoring-init.
+  laya-init:
+    image: docker.io/library/busybox:1.37.0
+    restart: "no"
+    logging: *logging
+    command: ["sh", "-c", "chown -R 10001:10001 /models"]
+    volumes:
+      - ${DATA_DIR}/laya/models:/models
+
+  laya:
+    build:
+      context: https://github.com/NandhaKishorM/laya.git#3c346a2f8b542838eed6a1d210aa378c79e71c4c
+      args:
+        TORCH_INDEX: cpu
+    depends_on:
+      laya-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    logging: *logging
+    init: true
+    mem_limit: ${LAYA_MEMORY:-4g}
+    memswap_limit: ${LAYA_MEMORY:-4g}
+    cpus: ${LAYA_CPUS:-4}
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    command: ["laya-serve"]
+    environment:
+      LAYA_HOST: 0.0.0.0
+      LAYA_PORT: "8000"
+      LAYA_DEVICE: cpu
+      # One checkpoint, loaded at start, so the first judge does not wait and no second model takes memory.
+      LAYA_MODELS: typed-decisions
+      LAYA_DEFAULT_MODEL: typed-decisions
+      LAYA_PRELOAD: "1"
+      LAYA_MAX_LOADED: "1"
+      # One request admitted at a time; a second one gets 503 at once instead of queueing behind the first.
+      LAYA_MAX_CONCURRENT: "1"
+      # Largest max_len a request may ask for. fleetify sends 8192 (its judge window).
+      LAYA_MAX_TOKEN_BUDGET: "8192"
+      LAYA_THREADS: "4"
+      OMP_NUM_THREADS: "4"
+      # Strict Jev contract: fleetify's Jev client reads these answers unchanged.
+      LAYA_JEV_STRICT: "1"
+      # Only checkpoints whose Hub revision is reviewed in laya/revisions.py may load.
+      LAYA_REVISION: reviewed
+      LAYA_LOG_LEVEL: info
+      LAYA_API_KEY: ${LAYA_API_KEY:?Set LAYA_API_KEY in .env, see .env.example}
+      TORCH_DISABLE_NATIVE_JIT: "1"
+    volumes:
+      # The checkpoints (about 1.7 GB) stay on the host and survive image rebuilds.
+      - ${DATA_DIR}/laya/models:/home/laya/.cache/huggingface
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os, urllib.request; r = urllib.request.Request('http://127.0.0.1:8000/health', headers={'Authorization': 'Bearer ' + os.environ['LAYA_API_KEY']}); urllib.request.urlopen(r, timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15m
+      start_interval: 5s
+
+  # Metrics proxy in front of laya: forwards every request unchanged and counts it (laya/metrics/proxy.py).
+  # Prometheus reads /metrics on the monitoring network. The client port is bound to loopback only:
+  # fleetify runs on this host, and the judge API must not be on the LAN.
+  laya-metrics:
+    build: ./laya/metrics
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      - laya
+    networks:
+      - default
+      - monitoring
+    mem_limit: 128m
+    cpus: 0.25
+    pids_limit: 64
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      LAYA_UPSTREAM: laya:8000
+      LAYA_API_KEY: ${LAYA_API_KEY:?Set LAYA_API_KEY in .env, see .env.example}
+    ports:
+      - "127.0.0.1:${LAYA_HOST_PORT:-8100}:8100"
+
 # Example component:
 #
 #  example:

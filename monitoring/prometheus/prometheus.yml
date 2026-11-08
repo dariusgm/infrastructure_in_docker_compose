@@ -50,6 +50,13 @@ scrape_configs:
         labels:
           service: url-proxy
 
+  # Laya judge: requests, latency and inference time, through the metrics proxy (laya/metrics/).
+  - job_name: laya
+    static_configs:
+      - targets: ["laya-metrics:8100"]
+        labels:
+          service: laya
+
   # Every container: CPU, memory, disk I/O and network I/O (cAdvisor).
   - job_name: containers
     static_configs:

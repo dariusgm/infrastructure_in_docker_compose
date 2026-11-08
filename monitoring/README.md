@@ -59,6 +59,7 @@ Each service that is scraped has an exporter or its own metrics endpoint, and jo
 | `valkey-paperless`, `valkey-immich` | `paperless-broker`, `immich-redis` | redis_exporter v1.96.0 (works with Valkey). |
 | `immich` | `immich-server:8081` | Immich's own metrics, `IMMICH_TELEMETRY_INCLUDE=all`. |
 | `url-proxy` | `url-proxy:8090/stub_status` | nginx-prometheus-exporter 1.5.3. The stub_status server is in `url-proxy/nginx.conf`. |
+| `laya` | `laya-metrics:8100` | Judge requests, latency and inference time, counted by the proxy in front of Laya. See `laya/README.md`. |
 
 ### Postgres health checks
 

@@ -45,6 +45,7 @@ The deployment is: clone this repository on the server, install the dependencies
 | `mail/` | Stalwart mail server, LAN only: alerts and family mailboxes. Admin UI and IMAPS. See `mail/README.md`. |
 | `smoke/` | Smoke test that boots the whole stack with throwaway data and checks it, and a hook that runs it before `gh pr create`. See "Smoke test" below. |
 | `monitoring/` | Prometheus (metrics) and Grafana (graphs). Grafana on port 3000. See `monitoring/README.md`. |
+| `laya/` | Laya, a local decision model used as the judge of fleetify, and its metrics proxy (`laya-metrics`, 127.0.0.1:8100). See `laya/README.md`. |
 | `vaultwarden/` | Notes for Vaultwarden, the Rust server for the Bitwarden clients (password manager). See `vaultwarden/README.md`. |
 | `immich/` | Notes for Immich, the photo archive (read-only originals, smart search, face recognition). The services are in `compose.yaml`. See `immich/README.md`. |
 | `backup/` | Image and notes for the daily backup of the databases and files. See `backup/README.md`. |
