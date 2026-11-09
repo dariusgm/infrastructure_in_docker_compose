@@ -47,9 +47,26 @@ cmake --build build --target llama-server -j"$(nproc)"
 
 `--list-devices` must show the Radeon. If it prints `(none)`, see the prerequisites above.
 
+## Install the models
+
+Models are installed separately from the servers. Nothing is started:
+
+```bash
+llama-cpp/fetch-models.sh            # all models, about 7 GB
+llama-cpp/fetch-models.sh ocr        # only the OCR model, about 6 GB
+llama-cpp/fetch-models.sh embeddings # only bge-m3, about 0.6 GB
+```
+
+Files go to `$LLAMA_MODEL_DIR`, default `~/llama-models`. Complete files are skipped on a second run.
+
+| File | Source |
+| --- | --- |
+| `bge-m3-Q8_0.gguf` | `gpustack/bge-m3-GGUF` |
+| `Qwen3-VL-8B-Instruct-Q4_K_M.gguf` and `mmproj-Qwen3-VL-8B-BF16.gguf` | `unsloth/Qwen3-VL-8B-Instruct-GGUF` (`mmproj-BF16.gguf`) |
+
 ## Run
 
-`serve.sh` starts one server with the settings below:
+`serve.sh` starts one server from the installed files:
 
 ```bash
 llama-cpp/serve.sh embeddings   # port $BGE_PORT, default 8090
@@ -58,25 +75,32 @@ llama-cpp/serve.sh ocr          # port $LLAMA_OCR_PORT, default 8091
 
 Extra arguments go to `llama-server`, for example `llama-cpp/serve.sh ocr --api-key "$KEY"`. The
 binary comes from `$LLAMA_BIN`, default `~/llama.cpp/build/bin/llama-server`. The `ocr` role warns if
-the shell is not in the `render` group, because then the GPU is not used.
+the shell is not in the `render` group, because then the GPU is not used. If a model file is missing,
+the script stops and names the `fetch-models.sh` command to run.
 
 The commands the script runs are:
 
 Embeddings, on CPU as on the workstation:
 
 ```bash
-~/llama.cpp/build/bin/llama-server -hf gpustack/bge-m3-GGUF:Q8_0 --embeddings --device none \
+llama-server -m ~/llama-models/bge-m3-Q8_0.gguf --embeddings --device none \
   -c 8192 -b 8192 -ub 8192 -t 4 --host 0.0.0.0 --port "$BGE_PORT"
 ```
 
 OCR, on the Radeon through Vulkan:
 
 ```bash
-~/llama.cpp/build/bin/llama-server -hf unsloth/Qwen3-VL-8B-Instruct-GGUF:Q4_K_M \
+llama-server -m ~/llama-models/Qwen3-VL-8B-Instruct-Q4_K_M.gguf \
+  --mmproj ~/llama-models/mmproj-Qwen3-VL-8B-BF16.gguf \
   -c 16384 --image-min-tokens 1024 --host 0.0.0.0 --port "$LLAMA_OCR_PORT"
 ```
 
 `--image-min-tokens 1024` is the minimum that the model's grounding needs (llama.cpp warns without it).
+
+The OCR server logs a warning that flash attention is disabled on Vulkan for layer 0. That is expected
+for this model and build. It is a performance note, not an error. The iGPU's dedicated memory is nearly
+full (about 3 of 3 GB) while the model runs, so a smaller `-c` or `--no-kv-offload` frees room if the
+server gets slow or runs out of memory.
 
 Measured on the host (Ryzen 7 5825U, Radeon iGPU, 16 GB free RAM):
 
@@ -88,7 +112,7 @@ Measured on the host (Ryzen 7 5825U, Radeon iGPU, 16 GB free RAM):
 Without an API key, both servers accept any request. Keep them on the LAN only, or set `--api-key` before
 exposing them further.
 
-Models are cached in `~/.cache/huggingface/hub`.
+Models are read from `$LLAMA_MODEL_DIR` (default `~/llama-models`), not from the Hugging Face cache.
 
 ## Docker (tested, CPU only)
 
