@@ -716,15 +716,15 @@ services:
       LAYA_HOST: 0.0.0.0
       LAYA_PORT: "8000"
       LAYA_DEVICE: cpu
-      # One checkpoint, loaded at start, so the first judge does not wait and no second model takes memory.
-      LAYA_MODELS: typed-decisions
-      LAYA_DEFAULT_MODEL: typed-decisions
+      # One checkpoint, loaded at start: english, the one the 1024-token judge window was measured on (fleetify docs/e2e.md).
+      LAYA_MODELS: english
+      LAYA_DEFAULT_MODEL: english
       LAYA_PRELOAD: "1"
       LAYA_MAX_LOADED: "1"
       # One request admitted at a time; a second one gets 503 at once instead of queueing behind the first.
       LAYA_MAX_CONCURRENT: "1"
-      # Largest max_len a request may ask for. fleetify sends 8192 (its judge window).
-      LAYA_MAX_TOKEN_BUDGET: "8192"
+      # Largest max_len a request may ask for. fleetify sends its judge window (1024).
+      LAYA_MAX_TOKEN_BUDGET: "1024"
       LAYA_THREADS: "4"
       OMP_NUM_THREADS: "4"
       # Strict Jev contract: fleetify's Jev client reads these answers unchanged.
