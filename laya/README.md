@@ -17,7 +17,7 @@ calls it unchanged.
 The model server publishes no port. The client port is bound to `127.0.0.1` only, because the
 judge API has a bearer key but no TLS, and fleetify runs on this host. Nothing on the LAN reaches it.
 
-Data: the checkpoint (`typed-decisions`, about 1.7 GB) is in `${DATA_DIR}/laya/models`. It is
+Data: the checkpoint (`english`, about 1.7 GB) is in `${DATA_DIR}/laya/models`. It is
 reproducible, so it is not part of the daily backup.
 
 ## Settings
@@ -32,7 +32,7 @@ Fixed in `compose.yaml`:
 
 - **One execution context.** `LAYA_MAX_CONCURRENT=1` admits one request at a time. A second one gets
   `503` at once, and fleetify retries it like an overload. The model's worker is one thread anyway.
-- **One checkpoint.** `LAYA_MODELS=typed-decisions`, loaded at start (`LAYA_PRELOAD=1`,
+- **One checkpoint.** `LAYA_MODELS=english`, the one the 1024-token judge window was measured on (fleetify docs/e2e.md), loaded at start (`LAYA_PRELOAD=1`,
   `LAYA_MAX_LOADED=1`). The other checkpoints load on demand and would replace it.
 - **Limits.** `mem_limit` and `memswap_limit` 4 GiB, `cpus` 4, `pids_limit` 256 for `laya`. The proxy
   has 128 MiB, a quarter CPU, a read-only root file system and no capabilities. The host runs about
@@ -77,7 +77,7 @@ An end-to-end check that does not need fleetify: send one request with the key (
 KEY=$(grep '^LAYA_API_KEY=' .env | cut -d= -f2-)
 curl -s http://127.0.0.1:8100/v1/systemone -H 'content-type: application/json' \
   -H "authorization: Bearer $KEY" \
-  --data '{"model":"typed-decisions","state":"Diff: let x = 1 became let count = 1.","questions":{"verdict":{"type":"choice","instructions":"Judge.","criteria":{"pass":"fix","fail":"gamed","unsure":"unknown"}}}}'
+  --data '{"model":"english","state":"Diff: let x = 1 became let count = 1.","questions":{"verdict":{"type":"choice","instructions":"Judge.","criteria":{"pass":"fix","fail":"gamed","unsure":"unknown"}}}}'
 ```
 
 ## Known limits
@@ -87,6 +87,6 @@ curl -s http://127.0.0.1:8100/v1/systemone -H 'content-type: application/json' \
   so a `min_confidence` of 0.5 sends such a change to review. Measure the threshold before relying on it.
 - **Startup warning.** The log says the checkpoint "ships invalid temperatures" for choice questions with
   11 or more options, which the judge does not ask. It is clamped to 0.5 by Laya.
-- **Input size.** `typed-decisions` is asked for up to 8192 tokens per question (`max_len`). A judge input above the recipe's context is answered
+- **Input size.** The judge asks for 1024 tokens per question (`max_len`); `LAYA_MAX_TOKEN_BUDGET=1024` refuses more. A judge input above the recipe's context is answered
   `unsure` by fleetify before any call.
 - **Not covered by the smoke test.** `smoke/smoke.py` boots the stack without these services yet.

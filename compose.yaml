@@ -141,6 +141,18 @@ services:
       PAPERLESS_TIKA_ENABLED: "true"
       PAPERLESS_TIKA_ENDPOINT: http://paperless-tika:9998
       PAPERLESS_TIKA_GOTENBERG_ENDPOINT: http://paperless-gotenberg:3000
+      # AI features: the chat LLM and the embedding model served by the llm and embedding services
+      # (see ai/README.md). The environment is the fallback behind the paperless configuration, so
+      # the setup survives a lost database. Values match the configuration in use.
+      PAPERLESS_AI_ENABLED: ${PAPERLESS_AI_ENABLED:-yes}
+      PAPERLESS_AI_LLM_BACKEND: ${PAPERLESS_AI_LLM_BACKEND:-openai-like}
+      PAPERLESS_AI_LLM_ENDPOINT: ${PAPERLESS_AI_LLM_ENDPOINT:-http://${HOST_IP}:8091/v1}
+      PAPERLESS_AI_LLM_MODEL: ${PAPERLESS_AI_LLM_MODEL:-qwen3-vl-8b}
+      PAPERLESS_AI_LLM_CONTEXT_SIZE: ${PAPERLESS_AI_LLM_CONTEXT_SIZE:-16384}
+      PAPERLESS_AI_LLM_REQUEST_TIMEOUT: ${PAPERLESS_AI_LLM_REQUEST_TIMEOUT:-6000}
+      PAPERLESS_AI_LLM_EMBEDDING_BACKEND: ${PAPERLESS_AI_LLM_EMBEDDING_BACKEND:-openai-like}
+      PAPERLESS_AI_LLM_EMBEDDING_ENDPOINT: ${PAPERLESS_AI_LLM_EMBEDDING_ENDPOINT:-http://${HOST_IP}:8090/v1}
+      PAPERLESS_AI_LLM_EMBEDDING_MODEL: ${PAPERLESS_AI_LLM_EMBEDDING_MODEL:-bge-m3}
     volumes:
       - ${DATA_DIR}/paperless/data:/usr/src/paperless/data
       - ${DATA_DIR}/paperless/media:/usr/src/paperless/media
@@ -763,15 +775,15 @@ services:
       LAYA_HOST: 0.0.0.0
       LAYA_PORT: "8000"
       LAYA_DEVICE: cpu
-      # One checkpoint, loaded at start, so the first judge does not wait and no second model takes memory.
-      LAYA_MODELS: typed-decisions
-      LAYA_DEFAULT_MODEL: typed-decisions
+      # One checkpoint, loaded at start: english, the one the 1024-token judge window was measured on (fleetify docs/e2e.md).
+      LAYA_MODELS: english
+      LAYA_DEFAULT_MODEL: english
       LAYA_PRELOAD: "1"
       LAYA_MAX_LOADED: "1"
       # One request admitted at a time; a second one gets 503 at once instead of queueing behind the first.
       LAYA_MAX_CONCURRENT: "1"
-      # Largest max_len a request may ask for. fleetify sends 8192 (its judge window).
-      LAYA_MAX_TOKEN_BUDGET: "8192"
+      # Largest max_len a request may ask for. fleetify sends its judge window (1024).
+      LAYA_MAX_TOKEN_BUDGET: "1024"
       LAYA_THREADS: "4"
       OMP_NUM_THREADS: "4"
       # Strict Jev contract: fleetify's Jev client reads these answers unchanged.
@@ -817,6 +829,71 @@ services:
       LAYA_API_KEY: ${LAYA_API_KEY:?Set LAYA_API_KEY in .env, see .env.example}
     ports:
       - "127.0.0.1:${LAYA_HOST_PORT:-8100}:8100"
+
+  # AI services for paperless (see ai/README.md). CPU builds of llama.cpp from the pinned commit
+  # below, the same source the native servers ran from. Ports are published on HOST_IP, the address
+  # paperless is configured with. No GPU: the Vulkan device cannot be passed into rootless Docker.
+  llm:
+    build:
+      context: https://github.com/ggml-org/llama.cpp.git#a691b2345844ce1b430201fc5fd404ce062e05f2
+      dockerfile: .devops/cpu.Dockerfile
+      target: server
+    restart: unless-stopped
+    logging: *logging
+    init: true
+    mem_limit: ${LLM_MEMORY:-14g}
+    memswap_limit: ${LLM_MEMORY:-14g}
+    cpus: ${LLM_CPUS:-8}
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    # Chat model (paperless llm_model "qwen3-vl-8b"). The vision projector (--mmproj) is loaded
+    # with it. Paperless 3.4 sends text only, so the image input is not used by paperless.
+    command:
+      - -m
+      - /models/Qwen3-VL-8B-Instruct-Q4_K_M.gguf
+      - --mmproj
+      - /models/mmproj-Qwen3-VL-8B-BF16.gguf
+      - --alias
+      - qwen3-vl-8b
+      - -c
+      - "16384"
+      - --image-min-tokens
+      - "1024"
+    volumes:
+      - ${DATA_DIR}/ai/models:/models:ro
+    ports:
+      - "${HOST_IP}:8091:8080"
+
+  # Embedding model for paperless (bge-m3), see ai/README.md.
+  embedding:
+    build:
+      context: https://github.com/ggml-org/llama.cpp.git#a691b2345844ce1b430201fc5fd404ce062e05f2
+      dockerfile: .devops/cpu.Dockerfile
+      target: server
+    restart: unless-stopped
+    logging: *logging
+    init: true
+    mem_limit: ${EMBEDDING_MEMORY:-3g}
+    memswap_limit: ${EMBEDDING_MEMORY:-3g}
+    cpus: ${EMBEDDING_CPUS:-4}
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
+    command:
+      - -m
+      - /models/bge-m3-Q8_0.gguf
+      - --embeddings
+      - -c
+      - "8192"
+      - -b
+      - "8192"
+      - -ub
+      - "8192"
+    volumes:
+      - ${DATA_DIR}/ai/models:/models:ro
+    ports:
+      - "${HOST_IP}:8090:8080"
 
 # Example component:
 #
