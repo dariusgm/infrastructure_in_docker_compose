@@ -89,7 +89,7 @@
   var services = [
     { name: "Paperless", scheme: "http", port: 8083, path: "/", note: "Dokumentenverwaltung" },
     { name: "Immich", scheme: "http", port: 2283, path: "/", note: "Fotoarchiv" },
-    { name: "Pet Tagger", scheme: "http", port: 2287, path: "/", note: "Haustiere in Immich taggen" },
+    { name: "Pet Tagger", scheme: "http", port: 2287, path: "/", note: "Haustiere in Immich taggen", tunnel: "darius" },
     { name: "Pi-hole", scheme: "http", port: 8082, path: "/admin", note: "DNS und Werbeblocker" },
     { name: "Vaultwarden", scheme: "https", port: 8084, path: "/", note: "Passwortverwaltung" },
     { name: "Grafana", scheme: "http", port: 3000, path: "/", note: "Überwachung" }
@@ -108,6 +108,14 @@
     a.appendChild(name);
     a.appendChild(meta);
     li.appendChild(a);
+    if (s.tunnel) {
+      // The service listens on 127.0.0.1 only, so it is reached through an SSH tunnel.
+      var hint = document.createElement("div");
+      hint.className = "meta";
+      hint.textContent = "SSH-Tunnel: ssh -L " + s.port + ":127.0.0.1:" + s.port + " " + s.tunnel + "@" + host +
+        " (danach http://localhost:" + s.port + ")";
+      li.appendChild(hint);
+    }
     list.appendChild(li);
   });
 </script>
