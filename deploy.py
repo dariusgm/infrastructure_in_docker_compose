@@ -21,7 +21,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 ENV_FILE = ROOT / ".env"
 REQUIRED_KEYS = ["HOST_IP", "HOST_USERNAME", "HOST_PASSWORD"]
-REQUIRED_DEPLOY = REQUIRED_KEYS + ["ALLOWED_NETWORK", "REPO_URL", "DEPLOY_DIR", "DATA_DIR", "SMB_HOST", "SMB_SHARE", "SMB_USERNAME", "SMB_PASSWORD", "IMMICH_SMB_HOST", "IMMICH_SMB_USERNAME", "IMMICH_SMB_PASSWORD", "IMMICH_SMB_1_SHARE", "IMMICH_SMB_1_SUBPATH", "IMMICH_SMB_2_SHARE", "IMMICH_SMB_2_SUBPATH", "IMMICH_SMB_3_SHARE", "IMMICH_SMB_3_SUBPATH", "IMMICH_DB_PASSWORD", "IMMICH_REDIS_PASSWORD"]
+REQUIRED_DEPLOY = [key for key in REQUIRED_KEYS if key != "HOST_PASSWORD"] + ["ALLOWED_NETWORK", "REPO_URL", "DEPLOY_DIR", "DATA_DIR", "SMB_HOST", "SMB_SHARE", "SMB_USERNAME", "SMB_PASSWORD", "IMMICH_SMB_HOST", "IMMICH_SMB_USERNAME", "IMMICH_SMB_PASSWORD", "IMMICH_SMB_1_SHARE", "IMMICH_SMB_1_SUBPATH", "IMMICH_SMB_2_SHARE", "IMMICH_SMB_2_SUBPATH", "IMMICH_SMB_3_SHARE", "IMMICH_SMB_3_SUBPATH", "IMMICH_DB_PASSWORD", "IMMICH_REDIS_PASSWORD"]
 # Secrets that stay on the local machine; the host gets a copy of .env without them.
 LOCAL_ONLY = ["HOST_PASSWORD", "HOST_PRIVATE_KEY", "HOST_PUBLIC_KEY"]
 
@@ -68,9 +68,16 @@ def ssh_run(target, command, key_file, stdin=None):
     subprocess.run([*ssh_command(key_file), target, command], input=stdin, check=True)
 
 
-def ssh_sudo(env, key_file, command):
-    """Run a command as root on the host. sudo reads the password from the first line of stdin."""
-    ssh_run(target_of(env), f"sudo -S -p '' {command}", key_file, stdin=(env["HOST_PASSWORD"] + "\n").encode())
+def ssh_sudo(env, key_file, command, allowlisted=True):
+    """Run a command as root on the host.
+
+    With allowlisted=True the command must be on the sudoers allowlist that pre-bootstrap.sh
+    installs, so no password is sent. With allowlisted=False sudo reads the password from stdin;
+    that is only used for the first run, before the allowlist exists."""
+    if allowlisted:
+        ssh_run(target_of(env), f"sudo -n {command}", key_file)
+    else:
+        ssh_run(target_of(env), f"sudo -S -p '' {command}", key_file, stdin=(env["HOST_PASSWORD"] + "\n").encode())
 
 
 def write_private_key(directory, env):
@@ -189,9 +196,16 @@ def cmd_deploy(env):
         # default identities of this machine are used.
         key_file = write_private_key(tmp, env) if env.get("HOST_PRIVATE_KEY") else None
 
+        # The sudo allowlist from pre-bootstrap.sh is in place once `sudo -n -l` lists the bootstrap script.
+        allowlisted = ssh_capture(target, "sudo -n -l 2>/dev/null | grep -q 'server/bootstrap.sh'", key_file)[0] == 0
+        # Absolute paths on the host. $HOME is expanded by the remote shell, so the sudoers entries match.
+        deploy_home = f"$HOME/{env['DEPLOY_DIR']}"
+
         print("==> 1. Code: clone or fast-forward the repository on the host")
         if ssh_capture(target, "command -v git >/dev/null", key_file)[0] != 0:
-            ssh_sudo(env, key_file, "sh -c 'apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates'")
+            ssh_sudo(env, key_file, "/usr/bin/apt-get update -qq", allowlisted=allowlisted)
+            ssh_sudo(env, key_file, "/usr/bin/apt-get install -y -qq --no-install-recommends git ca-certificates",
+                     allowlisted=allowlisted)
         code, out = ssh_capture(
             target,
             f"if [ -d {deploy_dir}/.git ]; then before=$(git -C {deploy_dir} rev-parse HEAD); "
@@ -202,6 +216,16 @@ def cmd_deploy(env):
         )
         if code != 0:
             sys.exit("could not fetch the code on the host")
+
+        if not allowlisted:
+            if not env.get("HOST_PASSWORD"):
+                sys.exit("HOST_PASSWORD is needed once, to install the sudo allowlist (pre-bootstrap.sh). "
+                         "Set it in .env and run deploy.py again.")
+            print("==> 1b. Sudo allowlist: pre-bootstrap.sh, with the password once", flush=True)
+            ssh_sudo(env, key_file,
+                     f"bash {deploy_home}/server/pre-bootstrap.sh {shlex.quote(env['HOST_USERNAME'])} {deploy_home}",
+                     allowlisted=False)
+            allowlisted = True
 
         print("==> 2. Configuration: upload .env when it differs from the host copy")
         local_copy = host_env_content()
@@ -221,10 +245,10 @@ def cmd_deploy(env):
         code, _ = remote_python(target, deploy_dir, key_file, "host_check")
         if code != 0:
             print("   host not ready: running the root preparation and the NAS mounts", flush=True)
-            ssh_sudo(env, key_file, f"bash {deploy_dir}/server/bootstrap.sh {shlex.quote(env['HOST_USERNAME'])} "
+            ssh_sudo(env, key_file, f"{deploy_home}/server/bootstrap.sh {shlex.quote(env['HOST_USERNAME'])} "
                                     f"{shlex.quote(env['ALLOWED_NETWORK'])} {shlex.quote(env['DATA_DIR'])} {relax}")
-            ssh_sudo(env, key_file, f"bash {deploy_dir}/server/consume-mount.sh {deploy_dir}/.env {shlex.quote(env['HOST_USERNAME'])}")
-            ssh_sudo(env, key_file, f"bash {deploy_dir}/server/immich-originals-mount.sh {deploy_dir}/.env {shlex.quote(env['HOST_USERNAME'])}")
+            ssh_sudo(env, key_file, f"{deploy_home}/server/consume-mount.sh {deploy_home}/.env {shlex.quote(env['HOST_USERNAME'])}")
+            ssh_sudo(env, key_file, f"{deploy_home}/server/immich-originals-mount.sh {deploy_home}/.env {shlex.quote(env['HOST_USERNAME'])}")
         ssh_capture(target, f"bash {deploy_dir}/server/up.sh --no-stack", key_file)
         code, _ = remote_python(target, deploy_dir, key_file, "host_check")
         if code != 0:
