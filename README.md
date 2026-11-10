@@ -12,20 +12,27 @@ The deployment is: clone this repository on the server, install the dependencies
    ```bash
    cp .env.example .env
    ```
-   Fill in `HOST_IP`, `HOST_USERNAME`, `HOST_PASSWORD` and `REPO_URL`, and the required values of
+   Fill in `HOST_IP`, `HOST_USERNAME` and `REPO_URL`, and the required values of
    each service (see `.env.example`, for example `PIHOLE_PASSWORD` and the `PAPERLESS_*` secrets).
-3. Create the SSH key pair and install it on the server (uses the password once):
+3. Create the SSH key pair and install it on the server (only for a new host; uses the password
+   once, from `HOST_PASSWORD` in `.env`):
    ```bash
    python3 deploy.py keys
    ```
    If `HOST_PRIVATE_KEY` and `HOST_PUBLIC_KEY` are already set in `.env`, those keys are used.
+   Once the key is on the host, `HOST_PASSWORD` is not needed any more and can be removed from `.env`.
 4. Deploy:
    ```bash
    python3 deploy.py deploy
    ```
    This clones or updates the repository on the server, uploads `.env`, installs Docker, Compose
    and ufw, sets the firewall to allow only `ALLOWED_NETWORK` (`192.0.0.0/8`), and runs
-   `docker compose up -d`. Run it again for every update.
+   `docker compose up -d`. Run it again for every update. Root steps use a sudo allowlist, so no
+   password is sent.
+5. The first deploy to a host stops after the clone, with the sudo allowlist missing. Run the
+   printed `pre-bootstrap.sh` command once on the host, typing your sudo password there. It
+   installs `/etc/sudoers.d/infrastructure-deploy` (see `server/pre-bootstrap.sh`). Then run
+   `python3 deploy.py deploy` again.
 
 ## Layout
 
