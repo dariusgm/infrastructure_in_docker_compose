@@ -391,6 +391,39 @@ services:
       timeout: 5s
       retries: 5
 
+  # --- Pet tagger: tags your pets in Immich as people, from reference photos (see immich/README.md) ---
+  # Separate project (tedornitier/immich-pet-tagger). It has its own CLIP and YOLO models, which it
+  # downloads once into /data. The web UI has no login, so it is bound to loopback only.
+  immich-pet-tagger:
+    image: ghcr.io/tedornitier/immich-pet-tagger:v1.9.0-cpu
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      immich-server:
+        condition: service_started
+    networks:
+      - default
+    ports:
+      - "127.0.0.1:2287:8000"
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      IMMICH_URL: http://immich-server:2283
+      # Created in Immich (Account Settings, API Keys) after the first start. See immich/README.md.
+      IMMICH_API_KEY: ${IMMICH_PET_TAGGER_API_KEY:-}
+      IMMICH_EXTERNAL_URL: http://${HOST_IP}:2283
+      TAG_NAME: immich-pet-tagger
+      POLL_INTERVAL: 3600
+      # Parallel YOLO and CLIP worker threads. 1 keeps a scan on one core. Set in .env per host.
+      MODEL_WORKERS: ${PET_TAGGER_MODEL_WORKERS:-4}
+      YOLO_INPUT_SIZE: 640
+      THRESHOLD: 0.8
+      THRESHOLD_FALLBACK: 0.85
+      YOLO_CONF: 0.2
+    volumes:
+      - ${DATA_DIR}/immich/pet-tagger:/data
+      - ${DATA_DIR}/immich/pet-tagger-cache:/root/.cache
+
   # --- Monitoring: Prometheus collects metrics, Grafana shows them (see monitoring/README.md) ---
   # Prometheus is reachable only through Grafana, so it publishes no port. The monitoring
   # network is internal, and Grafana also joins the default network to publish its port.

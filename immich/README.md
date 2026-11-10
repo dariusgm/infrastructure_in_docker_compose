@@ -188,3 +188,42 @@ After changing `.env` or `compose.yaml`, run `python3 deploy.py deploy`. A plain
    missing files before the stack runs unattended. Consider a scan only when the mount is verified.
 8. **Not tested here:** this machine had no Docker, so `docker compose config`, the start and the
    restore test have **not** been run.
+
+## Pet tagger (immich-pet-tagger)
+
+`immich-pet-tagger` tags your own pets (dogs, cats) in Immich as people, the same way Immich tags
+faces. Immich's face recognition only finds humans. The tagger is a separate project,
+[tedornitier/immich-pet-tagger](https://github.com/tedornitier/immich-pet-tagger), pinned to
+`v1.9.0-cpu` in `compose.yaml`. It has its own models: YOLOv8n finds the animals and CLIP ViT-B-16
+matches them against your reference photos. The models (about 360 MB) are downloaded once on the
+first scan into `${DATA_DIR}/immich/pet-tagger` and `${DATA_DIR}/immich/pet-tagger-cache`.
+
+- **Web UI:** `http://127.0.0.1:2287`, bound to loopback only. There is no login, so it is not
+  published on `HOST_IP`. On the server, use an SSH tunnel:
+  `ssh -L 2287:127.0.0.1:2287 <server>`.
+- **API key:** create it in Immich (Account Settings, API Keys) after the first start, with the
+  permissions from the upstream README: `asset.read`, `asset.view`, `person.create`, `person.read`,
+  `person.update`, `person.delete`, `person.reassign`, `face.create`, `face.read`, `face.delete`,
+  `user.read`, `tag.create`, `tag.asset`. Put it in `.env` as `IMMICH_PET_TAGGER_API_KEY`. Without
+  it the tagger starts but tags nothing.
+- **Tag:** tagged photos also get the tag `immich-pet-tagger`, so they can be found and checked.
+- **Workers:** `PET_TAGGER_MODEL_WORKERS` sets the parallel YOLO and CLIP workers (`MODEL_WORKERS`
+  in the container). The default is 4. Each worker uses about one core and some RAM (about 1.9 GiB at peak with one worker). On the
+  16-thread server it can be set in `.env`.
+- **Thresholds:** `THRESHOLD=0.8`, `THRESHOLD_FALLBACK=0.85`, `YOLO_CONF=0.2`, from the upstream
+  example. Adjust them in `compose.yaml` after the test.
+
+### Blank test on the development machine
+
+Start the stack with a separate data folder, so the server data is not touched. `HOST_IP` must be
+`127.0.0.1` on a machine that is not the server:
+
+```bash
+export HOST_IP=127.0.0.1 DATA_DIR=$HOME/immich-pet-test/data
+docker compose up -d immich-db immich-redis immich-db-exporter immich-machine-learning immich-server
+docker compose up -d immich-db-setup
+docker compose up -d immich-pet-tagger
+```
+
+`immich-db` is healthy only while `immich-db-exporter` runs, so the exporter must be started with
+the database. Create the first admin in the Immich web UI, then the API key as above.
