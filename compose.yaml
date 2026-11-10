@@ -116,20 +116,6 @@ services:
       PAPERLESS_ADMIN_MAIL: ${PAPERLESS_ADMIN_MAIL:-}
       PAPERLESS_TIME_ZONE: ${PAPERLESS_TIMEZONE:-UTC}
       PAPERLESS_OCR_LANGUAGE: ${PAPERLESS_OCR_LANGUAGE:-deu+eng}
-      # Local AI on this host: the native llama-server instances (llama-cpp/README.md) through their
-      # OpenAI-compatible /v1 API. Embeddings: bge-m3 on CPU. Chat: Qwen3-VL-8B on the Vulkan iGPU.
-      # OCR stays with Tesseract: Paperless only offers Azure AI as remote OCR engine.
-      # Paperless keeps these values in its database once set; the environment is the default.
-      PAPERLESS_AI_ENABLED: ${PAPERLESS_AI_ENABLED:-yes}
-      PAPERLESS_AI_LLM_EMBEDDING_BACKEND: openai-like
-      PAPERLESS_AI_LLM_EMBEDDING_ENDPOINT: http://${HOST_IP}:${BGE_PORT:-8090}/v1
-      PAPERLESS_AI_LLM_EMBEDDING_MODEL: bge-m3
-      PAPERLESS_AI_LLM_EMBEDDING_API_KEY: ${LLAMA_API_KEY:-none}
-      PAPERLESS_AI_LLM_BACKEND: openai-like
-      PAPERLESS_AI_LLM_ENDPOINT: http://${HOST_IP}:${LLAMA_OCR_PORT:-8091}/v1
-      PAPERLESS_AI_LLM_MODEL: qwen3-vl-8b
-      PAPERLESS_AI_LLM_CONTEXT_SIZE: "16384"
-      PAPERLESS_AI_LLM_API_KEY: ${LLAMA_API_KEY:-none}
       PAPERLESS_DBENGINE: postgresql
       PAPERLESS_DBHOST: paperless-db
       PAPERLESS_DBNAME: paperless
