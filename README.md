@@ -29,10 +29,13 @@ The deployment is: clone this repository on the server, install the dependencies
    and ufw, sets the firewall to allow only `ALLOWED_NETWORK` (`192.0.0.0/8`), and runs
    `docker compose up -d`. Run it again for every update. Root steps use a sudo allowlist, so no
    password is sent.
-5. The first deploy to a host stops after the clone, with the sudo allowlist missing. Run the
-   printed `pre-bootstrap.sh` command once on the host, typing your sudo password there. It
-   installs `/etc/sudoers.d/infrastructure-deploy` (see `server/pre-bootstrap.sh`). Then run
-   `python3 deploy.py deploy` again.
+5. The first deploy to a host stops after the clone, with the sudo allowlist missing. Run this
+   once, typing your sudo password on the host. It installs `/etc/sudoers.d/infrastructure-deploy`
+   (see `server/pre-bootstrap.sh`):
+   ```bash
+   sudo bash ~/infrastructure_in_docker_compose/server/pre-bootstrap.sh darius ~/infrastructure_in_docker_compose
+   ```
+   Replace `darius` with `HOST_USERNAME` if it differs. Then run `python3 deploy.py deploy` again.
 
 ## Layout
 
