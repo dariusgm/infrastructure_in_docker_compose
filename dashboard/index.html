@@ -47,10 +47,15 @@
     <tr><td>stalwart</td><td>443</td><td>443</td><td>TCP</td><td>Mail-Verwaltung (HTTPS)</td></tr>
     <tr><td>stalwart</td><td>993</td><td>993</td><td>TCP</td><td>IMAPS (Mail-Abruf)</td></tr>
     <tr><td>dashboard</td><td>8080</td><td>8080</td><td>TCP</td><td>Diese Startseite</td></tr>
+    <tr><td>llm</td><td>8091</td><td>8080</td><td>TCP</td><td>LLM-Chatmodell, OpenAI-kompatible API (Paperless, /v1)</td></tr>
+    <tr><td>embedding</td><td>8090</td><td>8080</td><td>TCP</td><td>Embedding-Modell bge-m3, OpenAI-kompatible API (Paperless, /v1)</td></tr>
+    <tr><td>immich-pet-tagger</td><td>127.0.0.1:2287</td><td>8000</td><td>TCP</td><td>Pet Tagger (nur lokal, SSH-Tunnel)</td></tr>
+    <tr><td>laya-metrics</td><td>127.0.0.1:8100</td><td>8100</td><td>TCP</td><td>Laya-Judge-API mit Zähler (nur lokal)</td></tr>
   </tbody>
 </table>
 </div>
-<p class="note">Host-Port ist der Port auf dem Server (HOST_IP). Die Links oben nutzen den Host-Namen, unter dem diese Seite geöffnet wurde.</p>
+<p class="note">Host-Port ist der Port auf dem Server (HOST_IP). Die Links oben nutzen den Host-Namen, unter dem diese Seite geöffnet wurde. Adressen mit 127.0.0.1 sind nur auf dem Server selbst erreichbar.</p>
+<p class="note">Die LLM-Endpunkte sind ohne API-Schlüssel im LAN erreichbar. Details in ai/README.md.</p>
 
 <h2>Interne Dienste</h2>
 <div class="table-wrap">
@@ -78,6 +83,11 @@
     <tr><td>paperless-app-exporter</td><td>monitoring</td><td>paperless-app-exporter:8081</td><td>Metriken Paperless</td></tr>
     <tr><td>cadvisor</td><td>monitoring</td><td>cadvisor:8080</td><td>Metriken der Container</td></tr>
     <tr><td>node-exporter</td><td>monitoring</td><td>node-exporter:9100</td><td>Metriken des Hosts</td></tr>
+    <tr><td>llm</td><td>default</td><td>llm:8080</td><td>LLM-Chatmodell (Paperless, /v1)</td></tr>
+    <tr><td>embedding</td><td>default</td><td>embedding:8080</td><td>Embedding-Modell bge-m3 (Paperless, /v1)</td></tr>
+    <tr><td>laya</td><td>default</td><td>laya:8000</td><td>Laya-Judge-API (über laya-metrics)</td></tr>
+    <tr><td>laya-metrics</td><td>default, monitoring</td><td>laya-metrics:8100</td><td>Proxy vor Laya mit Zählern</td></tr>
+    <tr><td>immich-pet-tagger</td><td>default</td><td>immich-pet-tagger:8000</td><td>Pet Tagger für Immich</td></tr>
   </tbody>
 </table>
 </div>
