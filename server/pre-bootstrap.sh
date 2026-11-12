@@ -47,3 +47,9 @@ EOF
 visudo -cf "$tmp" >/dev/null
 install -o root -g root -m 0440 "$tmp" "$SUDOERS"
 echo "sudo allowlist installed: $SUDOERS"
+
+# Embedding endpoint (compose service "embedding", host port 8090) for the LAN. bootstrap.sh already
+# allows ALLOWED_NETWORK (192.0.0.0/8) on all ports, so this rule is a narrower duplicate that keeps
+# the port open even if that broader rule is removed. ufw needs root, so it runs here.
+ufw allow from 192.0.0.0/8 to any port 8090 proto tcp comment 'embedding (LAN)' >/dev/null
+echo "ufw rule for port 8090 (LAN) present"
