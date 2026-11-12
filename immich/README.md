@@ -198,9 +198,8 @@ faces. Immich's face recognition only finds humans. The tagger is a separate pro
 matches them against your reference photos. The models (about 360 MB) are downloaded once on the
 first scan into `${DATA_DIR}/immich/pet-tagger` and `${DATA_DIR}/immich/pet-tagger-cache`.
 
-- **Web UI:** `http://127.0.0.1:2287`, bound to loopback only. There is no login, so it is not
-  published on `HOST_IP`. On the server, use an SSH tunnel:
-  `ssh -L 2287:127.0.0.1:2287 <server>`.
+- **Web UI:** `http://<HOST_IP>:8086`, behind the login of the buchindex gate (`buchindex-web`, same
+  user and password as the buchindex dashboard). The container itself is not published.
 - **API key:** create it in Immich (Account Settings, API Keys) after the first start, with the
   permissions from the upstream README: `asset.read`, `asset.view`, `person.create`, `person.read`,
   `person.update`, `person.delete`, `person.reassign`, `face.create`, `face.read`, `face.delete`,

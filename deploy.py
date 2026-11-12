@@ -203,6 +203,8 @@ def cmd_deploy(env):
                 sys.exit("git is missing on the host. Install it once as root (apt-get install git), then run deploy.py again.")
             ssh_sudo(env, key_file, "/usr/bin/apt-get update -qq")
             ssh_sudo(env, key_file, "/usr/bin/apt-get install -y -qq --no-install-recommends git ca-certificates")
+        if ssh_capture(target, "command -v rsync >/dev/null", key_file)[0] != 0:
+            sys.exit("rsync is missing on the host. Install it once as root (apt-get install rsync), then run deploy.py again. It copies the books into ~/books.")
         code, out = ssh_capture(
             target,
             f"if [ -d {deploy_dir}/.git ]; then before=$(git -C {deploy_dir} rev-parse HEAD); "
