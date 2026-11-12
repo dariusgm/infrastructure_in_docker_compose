@@ -28,6 +28,17 @@
 <h1>Dienste</h1>
 <ul id="list"></ul>
 
+<h2>buchindex-Suche verbinden</h2>
+<p class="note">Im Such-Dashboard (Port 8085, nach dem Login) unter „Instanz hinzufügen“ eintragen:</p>
+<table>
+  <tbody>
+    <tr><td>Name</td><td>default</td></tr>
+    <tr><td>Host</td><td id="buchindex-host">http://&lt;Server&gt;:8085/api</td></tr>
+    <tr><td>API Key</td><td>Wert von <code>BUCHINDEX_MEILI_KEY</code> aus der <code>.env</code> auf dem Server (steht nicht auf dieser Seite)</td></tr>
+  </tbody>
+</table>
+<p class="note">Der Master-Key ist nicht auf dieser Seite hinterlegt, denn diese Seite ist ohne Login im LAN erreichbar. Port 7700 ist nur auf dem Server selbst offen; die Suche läuft über <code>/api</code> hinter dem Login.</p>
+
 <h2>Portzuordnung</h2>
 <div class="table-wrap">
 <table>
@@ -110,6 +121,7 @@
     { name: "Vaultwarden", scheme: "https", port: 8084, path: "/", note: "Passwortverwaltung" },
     { name: "Grafana", scheme: "http", port: 3000, path: "/", note: "Überwachung" }
   ];
+  document.getElementById("buchindex-host").textContent = "http://" + host + ":8085/api";
   var list = document.getElementById("list");
   services.forEach(function (s) {
     var li = document.createElement("li");
