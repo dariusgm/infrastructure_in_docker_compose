@@ -401,8 +401,7 @@ services:
         condition: service_started
     networks:
       - default
-    ports:
-      - "127.0.0.1:2287:8000"
+    # No published port: reached through the login gate (buchindex-web, port PET_TAGGER_WEB_PORT).
     security_opt:
       - no-new-privileges:true
     environment:
@@ -887,6 +886,119 @@ services:
       - ${DATA_DIR}/ai/models:/models:ro
     ports:
       - "${HOST_IP}:8090:8080"
+
+  # buchindex: indexes the books into its own Meilisearch (the Meilisearch of this stack, not paperless).
+  # The buchindex source is the checkout in BUCHINDEX_DIR (default ~/buchindex), built here.
+  # The books come from BUCHINDEX_BOOKS_DIR (default ~/books), mounted read-only; buchindex never writes there.
+  # Only Meilisearch runs as a service. buchindex is a job: docker compose run --rm buchindex (default: sync).
+  meilisearch:
+    image: getmeili/meilisearch:v1.56.2
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      MEILI_MASTER_KEY: ${BUCHINDEX_MEILI_KEY:?Set BUCHINDEX_MEILI_KEY in .env, see .env.example}
+      MEILI_ENV: production
+      MEILI_NO_ANALYTICS: "true"
+      MEILI_MAX_INDEXING_THREADS: ${BUCHINDEX_MEILI_INDEXING_THREADS:-2}
+      # Meilisearch calls the embedding server (below) for search queries. Its internal-address
+      # check needs this exception, otherwise the embedder is refused.
+      MEILI_EXPERIMENTAL_ALLOWED_IP_NETWORKS: ${HOST_IP}/32
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:7700/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    # Loopback only: buchindex reaches it over the stack network, nothing else needs it.
+    ports:
+      - "127.0.0.1:${BUCHINDEX_MEILI_PORT:-7700}:7700"
+    volumes:
+      - ${DATA_DIR}/buchindex/meili:/meili_data
+
+  # Web UI for the buchindex Meilisearch: search and document view in the browser (eyeix/meilisearch-ui,
+  # release v0.15.3). Loopback only. The browser calls Meilisearch directly, so reach both ports through an
+  # SSH tunnel (see the dashboard). The UI keeps its instance settings in the browser, not on the server.
+  meilisearch-ui:
+    image: eyeix/meilisearch-ui:v0.15.3
+    restart: unless-stopped
+    logging: *logging
+    security_opt:
+      - no-new-privileges:true
+    # The UI builds its pages at start, so the first checks may fail; start_period covers that.
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:24900/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
+    # No published port: buchindex-web is the only way in (login required).
+
+  # Login gate for the dashboard and its API (see buchindex-web/nginx.conf). Published on HOST_IP, LAN only.
+  # The htpasswd file is written on the host to ${DATA_DIR}/buchindex/web/htpasswd, from WEB_USER and
+  # WEB_PASSWORD in .env. Dashboard instance URL: http://${HOST_IP}:${BUCHINDEX_WEB_PORT:-8085}/api
+  buchindex-web:
+    image: nginx:1.29-alpine
+    restart: unless-stopped
+    logging: *logging
+    depends_on:
+      - meilisearch-ui
+      - meilisearch
+      - immich-pet-tagger
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      # Port check only: the pages answer 401 without the login, which wget would report as a failure.
+      test: ["CMD", "nc", "-z", "127.0.0.1", "80"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    volumes:
+      - ./buchindex-web/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${DATA_DIR}/buchindex/web/htpasswd:/etc/nginx/htpasswd:ro
+    ports:
+      - "${HOST_IP}:${BUCHINDEX_WEB_PORT:-8085}:80"
+      # Pet tagger behind the same login (see the second server block in buchindex-web/nginx.conf).
+      - "${HOST_IP}:${PET_TAGGER_WEB_PORT:-8086}:8086"
+
+  # Makes the buchindex data directory writable for the buchindex user (same UID as the image below).
+  buchindex-init:
+    image: docker.io/library/busybox:1.37.0
+    restart: "no"
+    logging: *logging
+    command: ["sh", "-c", "mkdir -p /data/work && chown -R 10002:10002 /data"]
+    volumes:
+      - ${DATA_DIR}/buchindex/data:/data
+
+  buchindex:
+    build:
+      context: ${BUCHINDEX_DIR:-${HOME}/buchindex}
+      args:
+        UID: "10002"
+    # Not started by `docker compose up -d`, only by `docker compose run --rm buchindex`.
+    profiles: ["job"]
+    restart: "no"
+    logging: *logging
+    depends_on:
+      meilisearch:
+        condition: service_healthy
+      buchindex-init:
+        condition: service_completed_successfully
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      BOOKS_DIR: /books
+      STATE_DB: /data/state.db
+      WORK_DIR: /data/work
+      MEILI_URL: http://meilisearch:7700
+      MEILI_KEY: ${BUCHINDEX_MEILI_KEY:?Set BUCHINDEX_MEILI_KEY in .env, see .env.example}
+      EXTRACT_JOBS: ${BUCHINDEX_EXTRACT_JOBS:-1}
+      # Embedding server of the ai stack (bge-m3, port 8090 on HOST_IP).
+      EMBEDDER_URL: http://${HOST_IP}:8090/v1
+      EMBEDDER_MODEL: /models/bge-m3-Q8_0.gguf
+      EMBEDDER_DIMENSIONS: "1024"
+    volumes:
+      - ${BUCHINDEX_BOOKS_DIR:-${HOME}/books}:/books:ro
+      - ${DATA_DIR}/buchindex/data:/data
 
 # Example component:
 #

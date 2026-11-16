@@ -28,6 +28,17 @@
 <h1>Dienste</h1>
 <ul id="list"></ul>
 
+<h2>buchindex-Suche verbinden</h2>
+<p class="note">Im Such-Dashboard (Port 8085, nach dem Login) unter „Instanz hinzufügen“ eintragen:</p>
+<table>
+  <tbody>
+    <tr><td>Name</td><td>default</td></tr>
+    <tr><td>Host</td><td id="buchindex-host">http://&lt;Server&gt;:8085/api</td></tr>
+    <tr><td>API Key</td><td>Wert von <code>BUCHINDEX_MEILI_KEY</code> aus der <code>.env</code> auf dem Server (steht nicht auf dieser Seite)</td></tr>
+  </tbody>
+</table>
+<p class="note">Der Master-Key ist nicht auf dieser Seite hinterlegt, denn diese Seite ist ohne Login im LAN erreichbar. Port 7700 ist nur auf dem Server selbst offen; die Suche läuft über <code>/api</code> hinter dem Login.</p>
+
 <h2>Portzuordnung</h2>
 <div class="table-wrap">
 <table>
@@ -49,7 +60,9 @@
     <tr><td>dashboard</td><td>8080</td><td>8080</td><td>TCP</td><td>Diese Startseite</td></tr>
     <tr><td>llm</td><td>8091</td><td>8080</td><td>TCP</td><td>LLM-Chatmodell, OpenAI-kompatible API (Paperless, /v1)</td></tr>
     <tr><td>embedding</td><td>8090</td><td>8080</td><td>TCP</td><td>Embedding-Modell bge-m3, OpenAI-kompatible API (Paperless, /v1)</td></tr>
-    <tr><td>immich-pet-tagger</td><td>127.0.0.1:2287</td><td>8000</td><td>TCP</td><td>Pet Tagger (nur lokal, SSH-Tunnel)</td></tr>
+    <tr><td>immich-pet-tagger</td><td>8086</td><td>8000</td><td>TCP</td><td>Pet Tagger, mit Login (buchindex-web)</td></tr>
+    <tr><td>buchindex-web</td><td>8085</td><td>80</td><td>TCP</td><td>Such-Dashboard für buchindex, mit Login (Meilisearch-Oberfläche)</td></tr>
+    <tr><td>meilisearch</td><td>127.0.0.1:7700</td><td>7700</td><td>TCP</td><td>Suchindex buchindex (nur lokal)</td></tr>
     <tr><td>laya-metrics</td><td>127.0.0.1:8100</td><td>8100</td><td>TCP</td><td>Laya-Judge-API mit Zähler (nur lokal)</td></tr>
   </tbody>
 </table>
@@ -88,6 +101,9 @@
     <tr><td>laya</td><td>default</td><td>laya:8000</td><td>Laya-Judge-API (über laya-metrics)</td></tr>
     <tr><td>laya-metrics</td><td>default, monitoring</td><td>laya-metrics:8100</td><td>Proxy vor Laya mit Zählern</td></tr>
     <tr><td>immich-pet-tagger</td><td>default</td><td>immich-pet-tagger:8000</td><td>Pet Tagger für Immich</td></tr>
+    <tr><td>meilisearch</td><td>default</td><td>meilisearch:7700</td><td>Suchindex buchindex (über buchindex-web unter /api)</td></tr>
+    <tr><td>meilisearch-ui</td><td>default</td><td>meilisearch-ui:24900</td><td>Such-Dashboard für buchindex (über buchindex-web)</td></tr>
+    <tr><td>buchindex-web</td><td>default</td><td>buchindex-web:80</td><td>Login-Schutz für Such-Dashboard und Pet Tagger</td></tr>
   </tbody>
 </table>
 </div>
@@ -99,11 +115,13 @@
   var services = [
     { name: "Paperless", scheme: "http", port: 8083, path: "/", note: "Dokumentenverwaltung" },
     { name: "Immich", scheme: "http", port: 2283, path: "/", note: "Fotoarchiv" },
-    { name: "Pet Tagger", scheme: "http", port: 2287, path: "/", note: "Haustiere in Immich taggen", tunnel: true },
+    { name: "Pet Tagger", scheme: "http", port: 8086, path: "/", note: "Haustiere in Immich taggen (mit Login)" },
+    { name: "Buchindex-Suche", scheme: "http", port: 8085, path: "/", note: "Such-Dashboard für Bücher (mit Login)" },
     { name: "Pi-hole", scheme: "http", port: 8082, path: "/admin", note: "DNS und Werbeblocker" },
     { name: "Vaultwarden", scheme: "https", port: 8084, path: "/", note: "Passwortverwaltung" },
     { name: "Grafana", scheme: "http", port: 3000, path: "/", note: "Überwachung" }
   ];
+  document.getElementById("buchindex-host").textContent = "http://" + host + ":8085/api";
   var list = document.getElementById("list");
   services.forEach(function (s) {
     var li = document.createElement("li");

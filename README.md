@@ -5,6 +5,10 @@ Deploys the stack in this repository to a single Ubuntu server on the local netw
 The deployment is: clone this repository on the server, install the dependencies, and run
 `docker compose up -d`. Only Python 3 and OpenSSH are needed on the local machine.
 
+On the server, `git` and `rsync` must be installed once as root before the first deploy (`rsync` copies
+the books into `~/books`, see the buchindex section of `compose.yaml`). `deploy.py` stops with a message if
+either is missing.
+
 ## Setup
 
 1. Make the repository available at `REPO_URL` (the server clones it without credentials).
