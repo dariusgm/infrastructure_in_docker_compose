@@ -751,7 +751,8 @@ services:
     init: true
     mem_limit: ${LAYA_MEMORY:-4g}
     memswap_limit: ${LAYA_MEMORY:-4g}
-    cpus: ${LAYA_CPUS:-4}
+    # No cpus: limit. On the gmktec host a CFS quota on AVX2 load kills the machine within seconds
+    # (see ~/crash-investigation). The thread count caps the CPU use instead.
     pids_limit: 256
     security_opt:
       - no-new-privileges:true
@@ -828,7 +829,8 @@ services:
     init: true
     mem_limit: ${LLM_MEMORY:-14g}
     memswap_limit: ${LLM_MEMORY:-14g}
-    cpus: ${LLM_CPUS:-8}
+    # No cpus: limit. On the gmktec host a CFS quota on AVX2 load kills the machine within seconds
+    # (see ~/crash-investigation). The thread count caps the CPU use instead.
     pids_limit: 256
     security_opt:
       - no-new-privileges:true
@@ -845,6 +847,8 @@ services:
       - "16384"
       - --image-min-tokens
       - "1024"
+      - -t
+      - "${LLM_CPUS:-8}"
     volumes:
       - ${DATA_DIR}/ai/models:/models:ro
     ports:
@@ -861,7 +865,8 @@ services:
     init: true
     mem_limit: ${EMBEDDING_MEMORY:-3g}
     memswap_limit: ${EMBEDDING_MEMORY:-3g}
-    cpus: ${EMBEDDING_CPUS:-4}
+    # No cpus: limit. On the gmktec host a CFS quota on AVX2 load kills the machine within seconds
+    # (see ~/crash-investigation). The thread count caps the CPU use instead.
     pids_limit: 256
     security_opt:
       - no-new-privileges:true
@@ -875,6 +880,8 @@ services:
       - "8192"
       - -ub
       - "8192"
+      - -t
+      - "${EMBEDDING_CPUS:-4}"
     volumes:
       - ${DATA_DIR}/ai/models:/models:ro
     ports:
